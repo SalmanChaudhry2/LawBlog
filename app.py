@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
 from docx import Document
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -44,12 +44,6 @@ class AzureServices:
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
         )
         
-        self.image_client = AzureOpenAI(
-            api_key=os.getenv("AZURE_DALLE_KEY"),
-            api_version="2024-02-01",
-            azure_endpoint=os.getenv("AZURE_DALLE_ENDPOINT")
-        )
-
         self.conversations = {}
 
     def rewrite_content(self, original_text, tone, keywords, firm_name, location):
@@ -70,6 +64,7 @@ class AzureServices:
                     8. Use {tone} tone
                     9. Include these keywords naturally: {keywords}
                     10. Mention {firm_name} in {location} where relevant
+                    11. Firm name is {firm_name} and location is {location}
                     
                     DON'Ts:
                     1. Avoid legal jargon or complex language (keep it high-school level)
@@ -94,67 +89,6 @@ class AzureServices:
                 {"role": "user", "content": original_text}
             ],
             temperature=0.7,
-        )
-        return response.choices[0].message.content
-
-    def generate_image(self, text_prompt):
-        """
-        Generate an image based on the text prompt using Azure DALL-E
-        Args:
-            text_prompt: Description of the desired image
-        Returns:
-            Filename of the generated image
-        """
-        try:
-            safe_prompt = self._get_safe_image_prompt(text_prompt)
-            
-            response = self.image_client.images.generate(
-                model=os.getenv("AZURE_DALLE_DEPLOYMENT"),
-                prompt=safe_prompt,
-                size="1024x1024",
-                quality="standard",
-                n=1,
-            )
-            image_url = response.data[0].url
-            os.makedirs(os.path.join(app.static_folder, 'generated'), exist_ok=True)
-            
-            timestamp = int(time.time())
-            image_filename = f"image_{timestamp}.png"
-            image_path = os.path.join(app.static_folder, 'generated', image_filename)
-            
-            response = requests.get(image_url)
-            with open(image_path, 'wb') as f:
-                f.write(response.content)
-            
-            return image_filename
-            
-        except Exception as e:
-            print(f"Image generation failed: {e}")
-            return None
-        
-    def _get_safe_image_prompt(self, text_prompt):
-        """
-        Generate a content-filter-safe prompt for image generation
-        Args:
-            text_prompt: Original text prompt
-        Returns:
-            Safe, filtered prompt suitable for image generation
-        """
-        response = self.text_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
-            messages=[
-                {"role": "system", "content": """
-                    You are a prompt engineer for legal blog images. Create a safe, professional image prompt that:
-                    - Uses only abstract legal concepts
-                    - Avoids any faces, people, or sensitive content
-                    - Focuses on documents, scales of justice, legal symbols
-                    - Maintains a professional, corporate style
-                    - Will pass Azure content filters
-                    - Is based on this blog content:
-                """},
-                {"role": "user", "content": text_prompt[:1000]}
-            ],
-            temperature=0.7
         )
         return response.choices[0].message.content
 
@@ -192,6 +126,66 @@ class AzureServices:
         
         return ai_response
     
+class ImageGenerator:
+    def __init__(self):
+        self.image_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_DALLE_KEY"),
+            api_version="2024-02-01",
+            azure_endpoint=os.getenv("AZURE_DALLE_ENDPOINT")
+        )
+        self.text_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_KEY"),
+            api_version="2024-02-15-preview",
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+        )
+
+    def generate_image(self, text_prompt):
+        try:
+            safe_prompt = self._get_safe_image_prompt(text_prompt)
+            
+            response = self.image_client.images.generate(
+                model=os.getenv("AZURE_DALLE_DEPLOYMENT"),
+                prompt=safe_prompt,
+                size="1024x1024",
+                quality="standard",
+                n=1,
+            )
+            image_url = response.data[0].url
+            os.makedirs(os.path.join(app.static_folder, 'generated'), exist_ok=True)
+            
+            timestamp = int(time.time())
+            image_filename = f"image_{timestamp}.png"
+            image_path = os.path.join(app.static_folder, 'generated', image_filename)
+            
+            response = requests.get(image_url)
+            with open(image_path, 'wb') as f:
+                f.write(response.content)
+            
+            return image_filename
+            
+        except Exception as e:
+            print(f"Image generation failed: {e}")
+            return None
+        
+    def _get_safe_image_prompt(self, text_prompt):
+        response = self.text_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+            messages=[
+                {"role": "system", "content": """
+                    You are a prompt engineer for legal blog images. Create a safe, professional image prompt that:
+                    - Uses only abstract legal concepts
+                    - Avoids any faces, people, or sensitive content
+                    - Focuses on documents, scales of justice, legal symbols
+                    - Maintains a professional, corporate style
+                    - Will pass Azure content filters
+                    - Is based on this blog content:
+                """},
+                {"role": "user", "content": text_prompt[:1000]}
+            ],
+            temperature=0.7
+        )
+        return response.choices[0].message.content
+
 class FileManager:
     @staticmethod
     def list_articles():
@@ -201,7 +195,6 @@ class FileManager:
             List of article filenames
         """
         articles = [f for f in os.listdir(Config.ARTICLES_DIR) if f.endswith('.docx')]
-        print(f"Found articles: {articles}")
         return articles
     
     @staticmethod
@@ -215,7 +208,6 @@ class FileManager:
         try:
             with open(metadata_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                print(f"Read metadata content: {content}")
                 metadata = json.loads(content)
                 # Convert list to dictionary for easier lookup
                 result = {article['filename']: article for article in metadata['articles']}
@@ -321,6 +313,7 @@ class UserSession:
         return session.get('user')
 
 azure_services = AzureServices()
+image_generator = ImageGenerator()
 
 @app.template_filter('markdown')
 def markdown_filter(text):
@@ -407,7 +400,6 @@ def select_article(article):
         tone = request.form.get('tone')
         custom_tone = request.form.get('custom_tone', '').strip()
         
-        # If custom tone is selected and provided, use it
         if tone == 'custom' and custom_tone:
             tone = custom_tone
             
@@ -424,17 +416,14 @@ def select_article(article):
             location
         )
         
-        # Generate an image for the blog post
-        image_filename = azure_services.generate_image(blog_content)
-        
         # Save the generated content to a file
         filename = FileManager.save_content(blog_content)
         
-        # Set up the session data for the review page
+        # Set up the session data for the review page (without image initially)
         session['current_post'] = {
             'original': article,
             'content': blog_content,
-            'image': image_filename,
+            'image': None,  # Image will be generated later when requested
             'created': datetime.now().strftime("%Y-%m-%d %H:%M"),
             'tone': tone,
             'filename': filename
@@ -453,23 +442,16 @@ def select_article(article):
         
         return redirect(url_for('review'))
     
-    # Define tone options and their descriptions
     tone_options = [
         'Professional',
-        # 'Conversational',
-        # 'Authoritative',
         'Friendly',
-        # 'Technical'
         'Educational'
     ]
     
     tone_descriptions = {
         'Professional': 'Formal and business-like tone suitable for corporate audiences',
-        # 'Conversational': 'Casual and engaging tone that feels like a friendly discussion',
-        # 'Authoritative': 'Strong and confident tone that establishes expertise',
         'Friendly': 'Warm and approachable tone that builds rapport with readers',
-        # 'Technical': 'Detailed and precise tone focused on accuracy and technical details'
-        'Educational': 'Clear and informative tone designed to explain concepts and enhance understanding'
+        'Educational': 'Clear and informative tone designed to explain concepts'
     }
     
     return render_template('select.html',
@@ -594,7 +576,7 @@ def review():
                 'content_is_blog': True,
                 'timestamp': datetime.now().strftime("%H:%M:%S")
             })
-            
+
         session.modified = True
         return redirect(url_for('review'))
     
@@ -637,5 +619,19 @@ def save_changes():
 def download(filename):
     return send_from_directory(Config.GENERATED_DIR, filename, as_attachment=True)
 
+@app.route('/generate_image')
+def generate_image():
+    if 'current_post' not in session:
+        return redirect(url_for('dashboard'))
+    
+    # Generate image based on current content
+    image_filename = image_generator.generate_image(session['current_post']['content'])
+    
+    if image_filename:
+        session['current_post']['image'] = image_filename
+        session.modified = True
+    
+    return redirect(url_for('review'))
+    
 if __name__ == '__main__':
     app.run(debug=True)
