@@ -118,12 +118,14 @@
             <!-- User session information and logout button -->
             {% if session.get('user') %}
             <div class="navbar-nav ms-auto">
-                <span class="nav-item nav-link">
-                    <i data-feather="user" class="icon-sm me-1"></i>{{ session.get('user').username }}
-                </span>
-                <a class="nav-item nav-link" href="{{ url_for('logout') }}">
-                    <i data-feather="log-out" class="icon-sm me-1"></i>Logout
-                </a>
+                <div class="d-flex align-items-center">
+                    <a class="nav-item nav-link" href="{{ url_for('profile') }}">
+                        <i data-feather="user" class="icon-sm me-1"></i>{{ session.get('user').lawyer_name }}
+                    </a>
+                    <a class="nav-item nav-link" href="{{ url_for('logout') }}">
+                        <i data-feather="log-out" class="icon-sm me-1"></i>Logout
+                    </a>
+                <div>
             </div>
             {% endif %}
         </div>

@@ -40,6 +40,22 @@
     .nav-tabs .nav-link.active {
         font-weight: 500;
     }
+    .imageLoading {
+        padding: 1.5rem;
+        background-color: #f8f9fa;
+        border-radius: 0.25rem;
+        margin-bottom: 1rem;
+    }
+
+    .imageLoading p {
+        margin-top: 0.5rem;
+        color: #0E2539;
+    }
+    /* Disabled button state */
+    .generateImageBtn:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
 </style>
 {% endblock %}
 
@@ -82,7 +98,6 @@
                                     <div class="d-flex justify-content-between">
                                         <button type="submit" class="btn btn-primary">Save Changes</button>
                                         <div>
-                                            <a href="{{ url_for('generate_image') }}" class="btn btn-info me-2">Generate Image</a>
                                             <a href="{{ url_for('finalize') }}" class="btn btn-success">Finalize Post</a>
                                         </div>
                                     </div>
@@ -115,6 +130,18 @@
                                     No image generated yet.
                                 </div>
                                 {% endif %}
+
+                                <div id="imageLoading" class="text-center" style="display: none;">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Generating image...</p>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button id="generateImageBtn" class="btn btn-info" onclick="generateImage()">
+                                        <i data-feather="image" class="icon-sm me-1"></i>Generate Image
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -179,12 +206,53 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-    // Update live preview when manual editing
     document.querySelector('textarea[name="content"]').addEventListener('input', function() {
         const preview = document.getElementById('livePreview');
-        // This is a simple implementation - in a real app, you'd use a markdown parser
-        preview.innerHTML = this.value;
+        // Use marked.js to properly render markdown
+        preview.innerHTML = marked.parse(this.value);
     });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const textarea = document.querySelector('textarea[name="content"]');
+        const preview = document.getElementById('livePreview');
+        if (textarea && preview) {
+            preview.innerHTML = marked.parse(textarea.value);
+        }
+    });
+    function generateImage() {
+        // Show loading state
+        document.getElementById('generateImageBtn').disabled = true;
+        document.getElementById('imageLoading').style.display = 'block';
+        
+        // Hide existing image or message
+        const generatedImage = document.getElementById('generatedImage');
+        const noImageAlert = document.getElementById('noImageAlert');
+        if (generatedImage) generatedImage.style.display = 'none';
+        if (noImageAlert) noImageAlert.style.display = 'none';
+        
+        // Make AJAX request to generate image
+        fetch("{{ url_for('generate_image') }}")
+            .then(response => {
+                if (response.redirected) {
+                    // Reload the page when image is generated
+                    window.location.reload();
+                } else {
+                    throw new Error('Image generation failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // Restore UI state
+                document.getElementById('generateImageBtn').disabled = false;
+                document.getElementById('imageLoading').style.display = 'none';
+                if (generatedImage) generatedImage.style.display = 'block';
+                if (noImageAlert) noImageAlert.style.display = 'block';
+                
+                // Show error message
+                alert('Image generation failed. Please try again.');
+            });
+    }
 </script>
 {% endblock %}

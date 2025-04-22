@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify, g
 from docx import Document
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -10,12 +10,14 @@ import markdown
 from bs4 import BeautifulSoup
 from flask_session import Session
 import json
+import sqlite3
 
 load_dotenv()
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 app.config['UPLOAD_FOLDER'] = 'static/generated'
+app.config['DATABASE'] = os.path.join(app.instance_path, 'app.db')
 
 # Session configuration
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -24,6 +26,89 @@ app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 Session(app)
+
+# Database functions
+def get_db():
+    if 'db' not in g:
+        g.db = sqlite3.connect(app.config['DATABASE'])
+        g.db.row_factory = sqlite3.Row
+    return g.db
+
+def close_db(e=None):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+def init_db():
+    os.makedirs(app.instance_path, exist_ok=True)
+    with app.app_context():
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Create users table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            firm TEXT,
+            location TEXT,
+            lawyer_name TEXT,
+            state TEXT
+        )
+        ''')
+        
+        # Create tones table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            UNIQUE(user_id, name),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        ''')
+        
+        # Insert default users if they don't exist
+        cursor.execute("SELECT * FROM users WHERE username IN ('admin', 'memberhub')")
+        existing_users = cursor.fetchall()
+        existing_usernames = [user['username'] for user in existing_users]
+        
+        if 'admin' not in existing_usernames:
+            cursor.execute('''
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                'admin', 
+                'admin@lawfirm.com', 
+                'password123', 
+                'Legal Partners', 
+                'New York', 
+                'John', 
+                'NY'
+            ))
+        
+        if 'memberhub' not in existing_usernames:
+            cursor.execute('''
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                'memberhub', 
+                'memberhub@newlawbusinessmodel.com', 
+                'memberhub123', 
+                'New Law Business Model', 
+                'Global', 
+                'Member Hub', 
+                'CA'
+            ))
+        
+        db.commit()
+
+# Initialize database
+with app.app_context():
+    init_db()
 
 # Add context processor to inject current year into all templates
 @app.context_processor
@@ -211,7 +296,6 @@ class FileManager:
                 metadata = json.loads(content)
                 # Convert list to dictionary for easier lookup
                 result = {article['filename']: article for article in metadata['articles']}
-                print(f"Processed metadata: {result}")
                 return result
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
             print(f"Error reading metadata: {str(e)}")
@@ -245,68 +329,105 @@ class FileManager:
         return filename
 
 class UserSession:
-    USERS = {
-        "admin": {
-            "email": "admin@lawfirm.com",
-            "password": "password123", 
-            "firm": "Legal Partners", 
-            "location": "New York",
-            "custom_tones": []
-        },
-        "memberhub": {
-            "email": "memberhub@newlawbusinessmodel.com",
-            "password": "memberhub123",
-            "firm": "New Law Business Model",
-            "location": "Global",
-            "custom_tones": []
-        }
-    }
+    @staticmethod
+    def register(email, password, firm, location, lawyer_name, state):
+        db = get_db()
+        username = email.split('@')[0].lower()
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (username, email, password, firm, location, lawyer_name, state))
+            db.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
     
     @staticmethod
     def login(email, password):
-        # Find user by email
-        user_data = next((data for data in UserSession.USERS.values() if data['email'] == email), None)
+        db = get_db()
+        username = email.split('@')[0].lower()
+        user = db.execute(
+            'SELECT * FROM users WHERE username = ?', 
+            (username,)
+        ).fetchone()
         
-        if user_data and user_data['password'] == password:
-            # Find the username for this email
-            username = next((k for k,v in UserSession.USERS.items() if v['email'] == email), None)
+        if user and user['password'] == password:
+            # Get user's custom tones
+            tones = db.execute(
+                'SELECT name, description FROM tones WHERE user_id = ?',
+                (user['id'],)
+            ).fetchall()
             
             session['user'] = {
-                'username': username,
-                'email': email,
-                'firm': user_data['firm'],
-                'location': user_data['location'],
-                'custom_tones': user_data.get('custom_tones', [])
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email'],
+                'firm': user['firm'],
+                'location': user['location'],
+                'lawyer_name': user['lawyer_name'],
+                'state': user['state'],
+                'custom_tones': [dict(tone) for tone in tones]
             }
             return True
         return False
     
     @staticmethod
-    def add_custom_tone(username, tone_name, tone_description):
-        if username in UserSession.USERS:
-            # Initialize if not exists
-            if 'custom_tones' not in UserSession.USERS[username]:
-                UserSession.USERS[username]['custom_tones'] = []
+    def update_profile(username, firm, location, lawyer_name, state):
+        db = get_db()
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            UPDATE users 
+            SET firm = ?, location = ?, lawyer_name = ?, state = ?
+            WHERE username = ?
+            ''', (firm, location, lawyer_name, state, username))
+            db.commit()
             
-            # Check if tone with same name exists (case insensitive)
-            if not any(t['name'].lower() == tone_name.lower() 
-                      for t in UserSession.USERS[username]['custom_tones']):
-                UserSession.USERS[username]['custom_tones'].append({
-                    'name': tone_name.strip(),
-                    'description': tone_description.strip()
+            # Update session if this is the current user
+            if 'user' in session and session['user']['username'] == username:
+                session['user'].update({
+                    'firm': firm,
+                    'location': location,
+                    'lawyer_name': lawyer_name,
+                    'state': state
                 })
-                # Update session
-                if 'user' in session and session['user']['username'] == username:
-                    session['user']['custom_tones'] = UserSession.USERS[username]['custom_tones']
-                    session.modified = True
-                return True
-        return False
+                session.modified = True
+            return True
+        except sqlite3.Error:
+            return False
     
     @staticmethod
-    def get_custom_tones(username):
-        if username in UserSession.USERS:
-            return UserSession.USERS[username].get('custom_tones', [])
-        return []
+    def add_custom_tone(user_id, tone_name, tone_description):
+        db = get_db()
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            INSERT INTO tones (user_id, name, description)
+            VALUES (?, ?, ?)
+            ''', (user_id, tone_name, tone_description))
+            db.commit()
+            
+            # Update session if this is the current user
+            if 'user' in session and session['user']['id'] == user_id:
+                session['user']['custom_tones'].append({
+                    'name': tone_name,
+                    'description': tone_description
+                })
+                session.modified = True
+            return True
+        except sqlite3.IntegrityError:
+            return False
+    
+    @staticmethod
+    def get_custom_tones(user_id):
+        db = get_db()
+        tones = db.execute(
+            'SELECT name, description FROM tones WHERE user_id = ?',
+            (user_id,)
+        ).fetchall()
+        return [dict(tone) for tone in tones]
     
     @staticmethod
     def get_current_user():
@@ -326,6 +447,44 @@ def home():
     if not UserSession.get_current_user():
         return redirect(url_for('login'))
     return redirect(url_for('dashboard'))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        firm = request.form['firm']
+        location = request.form['location']
+        lawyer_name = request.form['lawyer_name']
+        state = request.form['state']
+        
+        if UserSession.register(email, password, firm, location, lawyer_name, state):
+            # Auto-login after registration
+            UserSession.login(email, password)
+            return redirect(url_for('dashboard'))
+        
+        return render_template('register.html', error="Email already registered")
+    
+    return render_template('register.html')
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    user = UserSession.get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        firm = request.form['firm']
+        location = request.form['location']
+        lawyer_name = request.form['lawyer_name']
+        state = request.form['state']
+        
+        if UserSession.update_profile(user['username'], firm, location, lawyer_name, state):
+            return redirect(url_for('dashboard'))
+        
+        return render_template('profile.html', error="Update failed")
+    
+    return render_template('profile.html', user=user)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -350,22 +509,16 @@ def dashboard():
     articles = FileManager.list_articles()
     metadata = FileManager.get_article_metadata()
     
-    print(f"Dashboard - Articles: {articles}")
-    print(f"Dashboard - Metadata: {metadata}")
-    
     # Combine standard tones with user's custom tones
     standard_tones = [
         ('Professional', 'Formal and business-like tone suitable for corporate audiences'),
-        # ('Conversational', 'Casual and engaging tone that feels like a friendly discussion'),
-        # ('Authoritative', 'Strong and confident tone that establishes expertise'),
         ('Friendly', 'Warm and approachable tone that builds rapport with readers'),
-        # ('Technical', 'Detailed and precise tone focused on accuracy and technical details')
-        ('Educational', 'Clear and informative tone designed to explain concepts and enhance understanding')
+        ('Educational', 'Clear and informative tone designed to explain concepts')
     ]
     
-    # Add custom tones if they exist
-    custom_tones = UserSession.get_custom_tones(user['username'])
+    custom_tones = user.get('custom_tones', [])
     all_tones = standard_tones + [(t['name'], t['description']) for t in custom_tones]
+    
     # Convert to the format expected by the template
     tone_options = [t[0] for t in all_tones]
     tone_descriptions = {t[0]: t[1] for t in all_tones}
@@ -381,18 +534,23 @@ def dashboard():
 def add_tone():
     user = UserSession.get_current_user()
     if not user:
-        return redirect(url_for('login'))
+        return jsonify({'success': False, 'error': 'Not logged in'}), 401
     
-    tone_name = request.form.get('tone_name', '').strip()
-    tone_description = request.form.get('tone_description', '').strip()
+    data = request.get_json() if request.is_json else request.form
+    tone_name = data.get('tone_name', '').strip()
+    tone_description = data.get('tone_description', '').strip()
     
     if not tone_name:
-        return {'success': False, 'error': 'Tone name is required'}, 400
+        return jsonify({'success': False, 'error': 'Tone name is required'}), 400
     
-    if UserSession.add_custom_tone(user['username'], tone_name, tone_description):
-        return {'success': True}
+    if UserSession.add_custom_tone(user['id'], tone_name, tone_description):
+        return jsonify({
+            'success': True,
+            'tone_name': tone_name,
+            'tone_description': tone_description
+        })
     
-    return {'success': False, 'error': 'Tone with this name already exists'}, 400
+    return jsonify({'success': False, 'error': 'Tone with this name already exists'}), 400
 
 @app.route('/select/<article>', methods=['GET', 'POST'])
 def select_article(article):
@@ -633,5 +791,9 @@ def generate_image():
     
     return redirect(url_for('review'))
     
+@app.teardown_appcontext
+def teardown_db(exception):
+    close_db()
+
 if __name__ == '__main__':
     app.run(debug=True)

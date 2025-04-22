@@ -119,6 +119,39 @@
     .additional-options .form-floating {
         margin-bottom: 0.75rem;
     }
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    .spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #f3f3f3;
+        border-top: 5px solid #0E2539;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 15px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+        font-size: 1.2rem;
+        color: #0E2539;
+    }
 </style>
 {% endblock %}
 
@@ -281,6 +314,10 @@
             </a>
         </div>
         {% endif %}
+        <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+            <div class="spinner"></div>
+            <div class="loading-text">Generating your blog...</div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -297,9 +334,28 @@
         const toastEl = document.getElementById('toast');
         const toast = toastEl ? new bootstrap.Toast(toastEl, {autohide: true, delay: 3000}) : null;
 
+        // Function to auto-fill user details
+        function autoFillUserDetails(index) {
+            // Get the user data from the template (passed from Flask)
+            const userFirm = "{{ session.user.firm if session.user else '' }}";
+            const userLocation = "{{ session.user.location if session.user else '' }}";
+            
+            // Auto-fill the form fields
+            const firmField = document.getElementById(`firm-${index}`);
+            const locationField = document.getElementById(`location-${index}`);
+            
+            if (firmField && userFirm) {
+                firmField.value = userFirm;
+            }
+            if (locationField && userLocation) {
+                locationField.value = userLocation;
+            }
+        }
+
         // Function to show tone selection for an article
         function showToneSelection(index) {
             document.getElementById(`tone-selection-${index}`).style.display = 'block';
+            autoFillUserDetails(index); // Auto-fill when showing tone selection
         }
         
         // Function to hide tone selection
@@ -411,6 +467,7 @@
 
         // Function to submit the form with selected tone
         function submitWithTone(index, article) {
+            document.getElementById('loadingOverlay').style.display = 'flex';
             const selectedTone = document.querySelector(`input[name="tone-${index}"]:checked`);
             let toneValue = selectedTone.value;
             let customTone = '';
@@ -509,6 +566,11 @@
                 saveCustomTone(index);
             });
         });
+
+        window.addEventListener('load', function() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        });
     });
+
 </script>
 {% endblock %}
