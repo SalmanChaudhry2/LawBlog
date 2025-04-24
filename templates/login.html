@@ -4,70 +4,120 @@
 
 {% block extra_css %}
 <style>
-    .login-container {
-        max-width: 400px;
+    .auth-card {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        max-width: 500px;
         margin: 0 auto;
     }
-    .login-header {
+    .auth-header {
+        background-color: #ffffff;
+        color: white;
+        border-radius: 10px 10px 0 0 !important;
+        padding: 1.5rem;
         text-align: center;
-        margin-bottom: 2rem;
     }
-    .login-header i {
-        font-size: 3rem;
-        color: #0d6efd;
-        margin-bottom: 1rem;
+    .auth-body {
+        padding: 2rem;
+    }
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+    .input-icon {
+        color: #6c757d;
+    }
+    .auth-footer {
+        text-align: center;
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #eee;
+    }
+    .default-credentials {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 1rem;
+    }
+    .btn-auth {
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="login-container">
-    <div class="card shadow-sm">
-        <div class="card-body p-4">
-            <div class="login-header">
-                <i class="bi bi-pencil-square"></i>
-                <h1 class="h3">NLBM Blog Tool</h1>
-                <p class="text-muted">Sign in to access your blog drafting workspace</p>
-            </div>
-            
-            {% if error %}
-            <div class="alert alert-danger" role="alert">
-                <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ error }}
-            </div>
-            {% endif %}
-            
-            <form method="POST" action="{{ url_for('login') }}">
-                <div class="mb-3">
-                    <label for="email" class="form-label">Email</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-person"></i></span>
-                        <input type="email" class="form-control" id="email" name="email" required>
-                    </div>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card auth-card">
+                <div class="card-header auth-header">
+                    <h3 class="h4 mb-0">Welcome Back</h3>
+                    <p class="mb-0 text-black">Sign in to your NLBM Blog Tool account</p>
                 </div>
                 
-                <div class="mb-4">
-                    <label for="password" class="form-label">Password</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                        <input type="password" class="form-control" id="password" name="password" required>
+                <div class="card-body auth-body">
+                    {% if error %}
+                    <div class="alert alert-danger" role="alert">
+                        <i data-feather="alert-circle" class="icon-sm me-2"></i>{{ error }}
+                    </div>
+                    {% endif %}
+                    
+                    <form method="POST" action="{{ url_for('login') }}">
+                        <div class="form-group">
+                            <label for="email" class="form-label">Email Address</label>
+                            <div class="input-group">
+                                <span class="input-group-text input-icon">
+                                    <i data-feather="mail" class="icon-sm"></i>
+                                </span>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       placeholder="your@email.com" required>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="password" class="form-label">Password</label>
+                            <div class="input-group">
+                                <span class="input-group-text input-icon">
+                                    <i data-feather="lock" class="icon-sm"></i>
+                                </span>
+                                <input type="password" class="form-control" id="password" name="password" 
+                                       placeholder="Enter your password" required>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid mt-4">
+                            <button type="submit" class="btn btn-primary btn-auth">
+                                <i data-feather="log-in" class="icon-sm me-2"></i> Sign In
+                            </button>
+                        </div>
+                    </form>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <a href="{{ url_for('register') }}" class="btn btn-outline-secondary">
+                            <i data-feather="log-in" class="icon-sm me-1"></i> Don't have an account? Register here
+                        </a>
+                    </div>
+
+                    <div class="auth-footer">
+                        <p class="default-credentials">
+                            <i data-feather="info" class="icon-xs me-1"></i>
+                            Default credentials: memberhub@newlawbusinessmodel.com / memberhub123
+                        </p>
                     </div>
                 </div>
-                
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-lg">Sign In</button>
-                </div>
-            </form>
-            
-            <div class="mt-4 text-center">
-                <small class="text-muted">
-                    <i class="bi bi-info-circle me-1"></i>
-                    Default credentials: memberhub@newlawbusinessmodel.com / memberhub123
-                </small>
-            </div>
-            <div class="text-center mt-3">
-                <a href="{{ url_for('register') }}">Don't have an account? Register</a>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize Feather icons
+        feather.replace();
+        
+        // Focus on email field when page loads
+        document.getElementById('email').focus();
+    });
+</script>
 {% endblock %}

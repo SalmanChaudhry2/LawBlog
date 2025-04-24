@@ -1,58 +1,208 @@
 {% extends "base.html" %}
 
+{% block title %}Register - NLBM Blog Tool{% endblock %}
+
+{% block extra_css %}
+<style>
+    .register-card {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .register-header {
+        background-color: #ffffff;
+        color: white;
+        border-radius: 10px 10px 0 0 !important;
+    }
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+    .keyword-tag {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .keyword-tag-remove {
+        cursor: pointer;
+        margin-left: 0.25rem;
+    }
+    .keyword-input-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .keyword-input-group input {
+        flex-grow: 1;
+    }
+    .password-help-text {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container mt-5">
+<div class="container mt-4">
     <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="text-center">Create Account</h3>
+        <div class="col-lg-6">
+            <div class="card register-card">
+                <div class="card-header register-header">
+                    <h3 class="text-center mb-0 text-black">Create Account</h3>
                 </div>
                 <div class="card-body">
                     {% if error %}
                     <div class="alert alert-danger">{{ error }}</div>
                     {% endif %}
                     
-                    <form method="POST">
-                        <div class="form-group">
-                            <label for="email">Email Address</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
+                    <form method="POST" id="registration-form">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="email" class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" id="email" name="email" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="password" class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="password" name="password" required>
+                                    <small class="password-help-text">At least 8 characters</small>
+                                </div>
+                            </div>
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="password">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="lawyer_name" class="form-label">Your Full Name</label>
+                                    <input type="text" class="form-control" id="lawyer_name" name="lawyer_name" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="firm" class="form-label">Law Firm Name</label>
+                                    <input type="text" class="form-control" id="firm" name="firm" required>
+                                </div>
+                            </div>
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="lawyer_name">Your Full Name</label>
-                            <input type="text" class="form-control" id="lawyer_name" name="lawyer_name" required>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="location" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="location" name="location" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" name="state" required>
+                                </div>
+                            </div>
                         </div>
-                        
+
+                        <!-- Keywords Section -->
                         <div class="form-group">
-                            <label for="firm">Law Firm Name</label>
-                            <input type="text" class="form-control" id="firm" name="firm" required>
+                            <label class="form-label">Practice Area Keywords</label>
+                            <div class="keyword-input-group mb-2">
+                                <input type="text" class="form-control" id="keyword-input" 
+                                       placeholder="Type a keyword">
+                                <button type="button" class="btn btn-primary" id="add-keyword-btn">
+                                    <i data-feather="plus" class="icon-xs"></i> Add
+                                </button>
+                            </div>
+                            <input type="hidden" name="keywords" id="keywords-hidden">
+                            <div class="keywords-preview d-flex flex-wrap" id="keywords-preview">
+                                <!-- Keywords will appear here as tags -->
+                            </div>
+                            <small class="text-muted">Add keywords that describe your practice areas</small>
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="location">City</label>
-                            <input type="text" class="form-control" id="location" name="location" required>
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i data-feather="user-plus" class="icon-sm me-1"></i> Register
+                            </button>
+                            <a href="{{ url_for('login') }}" class="btn btn-outline-secondary">
+                                <i data-feather="log-in" class="icon-sm me-1"></i> Already have an account? Login
+                            </a>
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="state">State</label>
-                            <input type="text" class="form-control" id="state" name="state" required>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary btn-block">Register</button>
                     </form>
-                    
-                    <div class="text-center mt-3">
-                        <a href="{{ url_for('login') }}">Already have an account? Login</a>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        feather.replace();
+        
+        const keywordInput = document.getElementById('keyword-input');
+        const addKeywordBtn = document.getElementById('add-keyword-btn');
+        const keywordsPreview = document.getElementById('keywords-preview');
+        const keywordsHidden = document.getElementById('keywords-hidden');
+        const form = document.getElementById('registration-form');
+        let keywords = [];
+
+        // Update the display and hidden field
+        function updateKeywords() {
+            keywordsPreview.innerHTML = '';
+            keywords.forEach(keyword => {
+                const tag = document.createElement('div');
+                tag.className = 'keyword-tag badge bg-primary';
+                tag.innerHTML = `
+                    ${keyword}
+                    <span class="keyword-tag-remove" data-keyword="${keyword}">
+                        <i data-feather="x" class="icon-xs"></i>
+                    </span>
+                `;
+                keywordsPreview.appendChild(tag);
+            });
+            keywordsHidden.value = keywords.join(',');
+            feather.replace();
+        }
+
+        // Add a keyword
+        function addKeyword() {
+            const keyword = keywordInput.value.trim();
+            if (keyword && !keywords.includes(keyword)) {
+                keywords.push(keyword);
+                updateKeywords();
+                keywordInput.value = '';
+                keywordInput.focus();
+            }
+        }
+
+        // Remove a keyword
+        function removeKeyword(keyword) {
+            keywords = keywords.filter(k => k !== keyword);
+            updateKeywords();
+        }
+
+        // Add keyword button click
+        addKeywordBtn.addEventListener('click', addKeyword);
+
+        // Add keyword on Enter key
+        keywordInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addKeyword();
+            }
+        });
+
+        // Remove keyword when x is clicked
+        keywordsPreview.addEventListener('click', function(e) {
+            if (e.target.closest('.keyword-tag-remove')) {
+                const keyword = e.target.closest('.keyword-tag-remove').dataset.keyword;
+                removeKeyword(keyword);
+            }
+        });
+
+        // Ensure keywords are submitted with the form
+        form.addEventListener('submit', function() {
+            keywordsHidden.value = keywords.join(',');
+        });
+    });
+</script>
 {% endblock %}

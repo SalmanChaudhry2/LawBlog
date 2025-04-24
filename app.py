@@ -55,7 +55,8 @@ def init_db():
             firm TEXT,
             location TEXT,
             lawyer_name TEXT,
-            state TEXT
+            state TEXT,
+            keywords TEXT    
         )
         ''')
         
@@ -78,8 +79,8 @@ def init_db():
         
         if 'admin' not in existing_usernames:
             cursor.execute('''
-            INSERT INTO users (username, email, password, firm, location, lawyer_name, state)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, keywords)
+            VALUES (?, ?, ?, ?, ?, ?, ?,?)
             ''', (
                 'admin', 
                 'admin@lawfirm.com', 
@@ -87,13 +88,14 @@ def init_db():
                 'Legal Partners', 
                 'New York', 
                 'John', 
-                'NY'
+                'NY',
+                'Personal Family Lawyer,Estate Planning Firm, Life & Legacy Planning'
             ))
         
         if 'memberhub' not in existing_usernames:
             cursor.execute('''
-            INSERT INTO users (username, email, password, firm, location, lawyer_name, state)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, keywords)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 'memberhub', 
                 'memberhub@newlawbusinessmodel.com', 
@@ -101,7 +103,8 @@ def init_db():
                 'New Law Business Model', 
                 'Global', 
                 'Member Hub', 
-                'CA'
+                'CA',
+                'Trusted estate planning firm, Asset protection services, Estate planning attorney'
             ))
         
         db.commit()
@@ -131,13 +134,25 @@ class AzureServices:
         
         self.conversations = {}
 
-    def rewrite_content(self, original_text, tone, keywords, firm_name, location):
+    def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location):
         response = self.text_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             messages=[
                 {"role": "system", "content": f"""
                     You are a legal blog post rewriter. There should be At least 30% changes from original. Rewrite the article following these strict guidelines:
+                    SEO REQUIREMENTS:
+                    1. Must include these elements within the first 150 words:
+                       - Primary keywords: {keywords}
+                       - Firm name: {firm_name}
+                       - Location: {location}
+                    2. Incorporate naturally - don't just list them
                     
+                    TONE REQUIREMENTS:
+                    1. Primary Tone: {tone}
+                    2. Tone Description: {tone_description}
+                    3. Consistency: Maintain this tone throughout the entire article
+                    
+                    CONTENT GUIDELINES:
                     DO's:
                     1. Use active voice
                     2. Structure with 5 sections: introduction, 3 subheadings, and conclusion with call-to-action
@@ -146,7 +161,7 @@ class AzureServices:
                     5. Conclusion should be brief (1-2 sentences) with clear call-to-action
                     6. Include 1-2 bulleted lists in the entire article
                     7. Balance paragraphs and lists appropriately
-                    8. Use {tone} tone
+                    8. Write in a {tone} tone
                     9. Include these keywords naturally: {keywords}
                     10. Mention {firm_name} in {location} where relevant
                     11. Firm name is {firm_name} and location is {location}
@@ -330,20 +345,20 @@ class FileManager:
 
 class UserSession:
     @staticmethod
-    def register(email, password, firm, location, lawyer_name, state):
+    def register(email, password, firm, location, lawyer_name, state, keywords=""):
         db = get_db()
         username = email.split('@')[0].lower()
         try:
             cursor = db.cursor()
             cursor.execute('''
-            INSERT INTO users (username, email, password, firm, location, lawyer_name, state)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (username, email, password, firm, location, lawyer_name, state))
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, keywords)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (username, email, password, firm, location, lawyer_name, state, keywords))
             db.commit()
             return True
         except sqlite3.IntegrityError:
             return False
-    
+
     @staticmethod
     def login(email, password):
         db = get_db()
@@ -368,21 +383,22 @@ class UserSession:
                 'location': user['location'],
                 'lawyer_name': user['lawyer_name'],
                 'state': user['state'],
+                'keywords': user['keywords'],
                 'custom_tones': [dict(tone) for tone in tones]
             }
             return True
         return False
-    
+
     @staticmethod
-    def update_profile(username, firm, location, lawyer_name, state):
+    def update_profile(username, firm, location, lawyer_name, state, keywords):
         db = get_db()
         try:
             cursor = db.cursor()
             cursor.execute('''
             UPDATE users 
-            SET firm = ?, location = ?, lawyer_name = ?, state = ?
+            SET firm = ?, location = ?, lawyer_name = ?, state = ?, keywords = ?
             WHERE username = ?
-            ''', (firm, location, lawyer_name, state, username))
+            ''', (firm, location, lawyer_name, state, keywords, username))
             db.commit()
             
             # Update session if this is the current user
@@ -391,13 +407,14 @@ class UserSession:
                     'firm': firm,
                     'location': location,
                     'lawyer_name': lawyer_name,
-                    'state': state
+                    'state': state,
+                    'keywords': keywords
                 })
                 session.modified = True
             return True
         except sqlite3.Error:
             return False
-    
+        
     @staticmethod
     def add_custom_tone(user_id, tone_name, tone_description):
         db = get_db()
@@ -457,8 +474,8 @@ def register():
         location = request.form['location']
         lawyer_name = request.form['lawyer_name']
         state = request.form['state']
-        
-        if UserSession.register(email, password, firm, location, lawyer_name, state):
+        keywords = request.form.get('keywords', '')
+        if UserSession.register(email, password, firm, location, lawyer_name, state, keywords):
             # Auto-login after registration
             UserSession.login(email, password)
             return redirect(url_for('dashboard'))
@@ -478,13 +495,21 @@ def profile():
         location = request.form['location']
         lawyer_name = request.form['lawyer_name']
         state = request.form['state']
+        keywords = request.form.get('keywords', '')
         
-        if UserSession.update_profile(user['username'], firm, location, lawyer_name, state):
+        if UserSession.update_profile(user['username'], firm, location, lawyer_name, state, keywords):
+            session['user']['firm'] = firm
+            session['user']['location'] = location
+            session['user']['lawyer_name'] = lawyer_name
+            session['user']['state'] = state
+            session['user']['keywords'] = keywords
+            session.modified = True
+            
             return redirect(url_for('dashboard'))
         
-        return render_template('profile.html', error="Update failed")
+        return render_template('profile.html', error="Update failed", user=session['user'])
     
-    return render_template('profile.html', user=user)
+    return render_template('profile.html', user=session['user'])
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -524,11 +549,13 @@ def dashboard():
     tone_descriptions = {t[0]: t[1] for t in all_tones}
     
     return render_template('dashboard.html', 
+                         user=user,
                          username=user['username'],
                          articles=articles,
                          metadata=metadata,
                          tone_options=tone_options,
-                         tone_descriptions=tone_descriptions)
+                         tone_descriptions=tone_descriptions,
+                         user_keywords=user.get('keywords', ''))
 
 @app.route('/add_tone', methods=['POST'])
 def add_tone():
@@ -556,8 +583,9 @@ def add_tone():
 def select_article(article):
     if request.method == 'POST':
         tone = request.form.get('tone')
-        custom_tone = request.form.get('custom_tone', '').strip()
-        
+        tone_description = request.form.get('toneDescription')
+        custom_tone = request.form.get('customToneName')
+
         if tone == 'custom' and custom_tone:
             tone = custom_tone
             
@@ -569,6 +597,7 @@ def select_article(article):
         blog_content = azure_services.rewrite_content(
             FileManager.read_docx(article),
             tone,
+            tone_description,
             keywords,
             firm,
             location
