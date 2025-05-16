@@ -134,7 +134,8 @@ class AzureServices:
         
         self.conversations = {}
 
-    def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location):
+    def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location, lawyer_name, city, state):
+        print(f"{lawyer_name}, city: {city}, state: {state}")
         response = self.text_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             messages=[
@@ -144,7 +145,9 @@ class AzureServices:
                     1. Must include these elements within the first 150 words:
                        - Primary keywords: {keywords}
                        - Firm name: {firm_name}
-                       - Location: {location}
+                       - City-state of firm: {location}
+                       - Lawyer name: {lawyer_name}
+                       - City-state of Lawyer: {city}, {state}
                     2. Incorporate naturally - don't just list them
                     
                     TONE REQUIREMENTS:
@@ -165,6 +168,7 @@ class AzureServices:
                     9. Include these keywords naturally: {keywords}
                     10. Mention {firm_name} in {location} where relevant
                     11. Firm name is {firm_name} and location is {location}
+                    12 Lawyer name is {lawyer_name} and location is {city}, {state}
                     
                     DON'Ts:
                     1. Avoid legal jargon or complex language (keep it high-school level)
@@ -581,6 +585,9 @@ def add_tone():
 
 @app.route('/select/<article>', methods=['GET', 'POST'])
 def select_article(article):
+    user = UserSession.get_current_user()
+    if not user:
+        return redirect(url_for('login'))
     if request.method == 'POST':
         tone = request.form.get('tone')
         tone_description = request.form.get('toneDescription')
@@ -592,7 +599,10 @@ def select_article(article):
         keywords = request.form.get('keywords', '')
         firm = request.form.get('firm', '')
         location = request.form.get('location', '')
-        
+        lawyer_name = user.get('lawyer_name', '')
+        city = user.get('location', '')
+        state = user.get('state', '')
+
         # Generate the blog post with the selected tone
         blog_content = azure_services.rewrite_content(
             FileManager.read_docx(article),
@@ -600,7 +610,10 @@ def select_article(article):
             tone_description,
             keywords,
             firm,
-            location
+            location,
+            lawyer_name,
+            city,
+            state
         )
         
         # Save the generated content to a file
