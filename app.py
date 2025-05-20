@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify, g
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify, g, send_file
 from docx import Document
 from openai import AzureOpenAI
 from dotenv import load_dotenv
@@ -11,6 +11,12 @@ from bs4 import BeautifulSoup
 from flask_session import Session
 import json
 import sqlite3
+from io import BytesIO
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+import re
+from docx.oxml.shared import OxmlElement
+from docx.oxml.ns import qn
 
 load_dotenv()
 
@@ -135,7 +141,6 @@ class AzureServices:
         self.conversations = {}
 
     def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location, lawyer_name, city, state):
-        print(f"{lawyer_name}, city: {city}, state: {state}")
         response = self.text_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             messages=[
@@ -155,6 +160,16 @@ class AzureServices:
                     2. Tone Description: {tone_description}
                     3. Consistency: Maintain this tone throughout the entire article
                     
+                    SPECIAL BRANDING REQUIREMENTS:
+                    - Avoid transactional language like "investing in" which are not aligned with the Personal Family Lawyer® brand tone
+                    - Instead use phrases like:
+                        * "work with us to choose a plan that works to keep your loved ones out of court and out of conflict"
+                        * "create a plan that protects what matters most"
+                        * "develop a comprehensive approach to safeguarding your family's future"
+                        * "put a plan in place that ensures your wishes are honored"
+                        * "create a plan that grows with your family and ensures lasting peace of mind"
+                    - Emphasize the ongoing relationship and family protection aspects rather than transactional terms
+
                     CONTENT GUIDELINES:
                     DO's:
                     1. Use active voice
@@ -276,17 +291,24 @@ class ImageGenerator:
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             messages=[
                 {"role": "system", "content": """
-                    You are a prompt engineer for legal blog images. Create a safe, professional image prompt that:
-                    - Uses only abstract legal concepts
-                    - Avoids any faces, people, or sensitive content
-                    - Focuses on documents, scales of justice, legal symbols
-                    - Maintains a professional, corporate style
-                    - Will pass Azure content filters
+                    You are a creative prompt engineer for legal blog images. Create safe and professional image prompts that:
+                    1. Are directly relevant to the blog content
+                    2. Be 'unique to the blog's content', not generic or reusable for any legal article
+                    3. Reflect the main topic, themes, or message of the blog post
+                    4. Focus on modern, visually appealing representations
+                    5. Must pass Azure content filters
+                    6. Avoids sensitive content
+                    The prompt should be detailed and specific, including:
+                        - Main subject
+                        - Style description
+                        - Color palette
+                        - Composition notes
+                        - Mood/tone
                     - Is based on this blog content:
                 """},
                 {"role": "user", "content": text_prompt[:1000]}
             ],
-            temperature=0.7
+            temperature=1
         )
         return response.choices[0].message.content
 
@@ -346,6 +368,84 @@ class FileManager:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(content)
         return filename
+
+    @staticmethod
+    def generate_formatted_docx(content, title="Legal Blog"):
+        """Generate DOCX with exact formatting from markdown"""
+        doc = Document()
+
+        # Custom styles (can be modified)
+        styles = {
+            'h1': {'font_size': 16, 'bold': True, 'color': RGBColor(0, 32, 96)},
+            'h2': {'font_size': 14, 'bold': True, 'color': RGBColor(0, 64, 128)},
+            'h3': {'font_size': 12, 'bold': True, 'italic': True},
+            'bold': {'bold': True},
+            'normal': {'font_size': 11}
+        }
+        
+        def apply_style(run, style):
+            """Helper function to apply formatting"""
+            run.font.size = Pt(style.get('font_size', 11))
+            run.font.bold = style.get('bold', False)
+            run.font.italic = style.get('italic', False)
+            if 'color' in style:
+                run.font.color.rgb = style['color']
+        
+        # Add title (formatted as H1)
+        title_para = doc.add_heading(level=1)
+        title_run = title_para.add_run(title)
+        apply_style(title_run, styles['h1'])
+        title_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        
+        # Process markdown content line by line
+        lines = content.split('\n')
+        for line in lines:
+
+            if line.replace('-', '').strip() == '' and len(line) >= 3:
+                continue
+
+            # Detect formatting
+            if line.startswith('# '):  # H1
+                para = doc.add_heading(level=1)
+                run = para.add_run(line[2:].strip())
+                apply_style(run, styles['h1'])
+                
+            elif line.startswith('## '):  # H2
+                para = doc.add_heading(level=2)
+                run = para.add_run(line[3:].strip())
+                apply_style(run, styles['h2'])
+                
+            elif line.startswith('### '):  # H3
+                para = doc.add_heading(level=3)
+                run = para.add_run(line[4:].strip())
+                apply_style(run, styles['h3'])
+                
+            elif '**' in line:  # Bold text
+                para = doc.add_paragraph()
+                parts = re.split(r'(\*\*.+?\*\*)', line)
+                for part in parts:
+                    if part.startswith('**') and part.endswith('**'):
+                        run = para.add_run(part[2:-2])
+                        apply_style(run, styles['bold'])
+                    else:
+                        para.add_run(part)
+            
+            else:  # Normal paragraph
+                para = doc.add_paragraph()
+                run = para.add_run(line)
+                apply_style(run, styles['normal'])
+        # Collect all empty paragraphs
+        empty_paragraphs = [p for p in doc.paragraphs if not p.text.strip()]
+
+        # Remove each empty paragraph from the document
+        for p in empty_paragraphs:
+            p._element.getparent().remove(p._element)
+
+        # Save to bytes buffer
+        file_stream = BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
+        return file_stream
 
 class UserSession:
     @staticmethod
@@ -817,7 +917,31 @@ def save_changes():
 
 @app.route('/download/<filename>')
 def download(filename):
-    return send_from_directory(Config.GENERATED_DIR, filename, as_attachment=True)
+    if 'current_post' not in session:
+        return redirect(url_for('dashboard'))
+    
+    try:
+        # Read generated content
+        filepath = os.path.join(Config.GENERATED_DIR, filename)
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Get title
+        title = session['current_post'].get('original', 'Legal Blog').replace('.docx', '')
+        
+        # Generate formatted DOCX
+        docx_file = FileManager.generate_formatted_docx(content, title)
+        
+        return send_file(
+            docx_file,
+            as_attachment=True,
+            download_name=f"{title}.docx",
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+        
+    except Exception as e:
+        print(f"DOCX generation failed: {e}")
+        return redirect(url_for('review'))
 
 @app.route('/generate_image')
 def generate_image():
