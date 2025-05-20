@@ -391,12 +391,6 @@ class FileManager:
             if 'color' in style:
                 run.font.color.rgb = style['color']
         
-        # Add title (formatted as H1)
-        title_para = doc.add_heading(level=1)
-        title_run = title_para.add_run(title)
-        apply_style(title_run, styles['h1'])
-        title_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        
         # Process markdown content line by line
         lines = content.split('\n')
         for line in lines:
