@@ -4,9 +4,6 @@
 
 {% block extra_css %}
 <style>
-    .article-card {
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
     .article-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
@@ -86,6 +83,46 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+    .filter-btn {
+        transition: all 0.2s;
+    }
+    .filter-btn.active {
+        background-color: #0E2539;
+        color: white;
+        border-color: #0E2539;
+    }
+    .btn-group {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .btn-group .btn {
+        margin: 0;
+    }
+
+    #articles-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .article-card {
+        transition: all 0.3s ease;
+        break-inside: avoid;
+        margin-bottom: 1rem;
+    }
+
+    /* For filtered views */
+    .flex-layout {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .flex-layout .article-card {
+        flex: 1 1 300px;
+        max-width: calc(33.333% - 1rem);
+    }
 </style>
 {% endblock %}
 
@@ -115,6 +152,28 @@
         </div>
     </div>
 
+    <!-- Add filter controls -->
+    <div class="card-body border-bottom">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <span class="me-2">Filter:</span>
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary filter-btn active" data-filter="latest">Latest</button>
+                <button type="button" class="btn btn-outline-primary filter-btn" data-filter="all">All Articles</button>
+            </div>
+            {% if series_list %}
+            <div class="btn-group" role="group">
+                {% for series in series_list %}
+                <button type="button" class="btn btn-outline-primary filter-btn" 
+                        data-filter="series-{{ loop.index }}"
+                        data-series="{{ series }}">
+                    {{ series }}
+                </button>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
     <!-- Main content area-->
     <div class="card-body">
         {% if articles %}
@@ -125,7 +184,10 @@
             
             <!-- Article card -->
             <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100 article-card">
+                <div class="card h-100 article-card"
+                    data-series="{{ meta.series if meta.series else 'none' }}"
+                    data-series-index="{{ meta.series_order if meta.series_order else 0 }}"
+                    data-publish-date="{{ meta.publish_date if meta.publish_date else '' }}">
                     <div class="card-body">
                         <!-- Article icon -->
                         <div class="article-icon">
@@ -523,6 +585,102 @@
                 }
             });
         });
-    });
+    
+        // Filter button click handler
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Update active state
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                const filterType = this.dataset.filter;
+                filterArticles(filterType, this);
+            });
+        });
+
+        // Initialize with 'latest' filter
+            const defaultFilter = document.querySelector('.filter-btn[data-filter="latest"]');
+            if (defaultFilter) defaultFilter.click();
+        });
+
+        function filterArticles(filterType, clickedButton) {
+            const articlesContainer = document.querySelector('.row'); // Changed to target the row container
+            const articles = Array.from(document.querySelectorAll('.article-card'));
+            
+            // First, reset all articles to visible and remove any previous hiding
+            articles.forEach(article => {
+                article.style.display = 'block';
+                article.parentElement.style.display = 'block'; // Show the parent column
+            });
+            
+            if (filterType === 'latest') {
+                // Object to track the highest series_order article for each series
+                const latestSeriesArticles = {};
+                
+                // First pass - find the article with highest series_order for each series
+                articles.forEach(article => {
+                    const series = article.dataset.series;
+                    const seriesOrder = parseInt(article.dataset.seriesIndex) || 0;
+                    
+                    if (series !== 'none') {
+                        if (!latestSeriesArticles[series] || 
+                            seriesOrder > latestSeriesArticles[series].order) {
+                            latestSeriesArticles[series] = {
+                                element: article,
+                                order: seriesOrder
+                            };
+                        }
+                    }
+                });
+                
+                // Second pass - hide non-latest series articles
+                articles.forEach(article => {
+                    const series = article.dataset.series;
+                    
+                    if (series === 'none') {
+                        // Non-series article - always show
+                        article.style.display = 'block';
+                        article.parentElement.style.display = 'block';
+                    } else {
+                        // Series article - show only if it has the highest series_order
+                        if (latestSeriesArticles[series] && article === latestSeriesArticles[series].element) {
+                            article.style.display = 'block';
+                            article.parentElement.style.display = 'block';
+                        } else {
+                            article.style.display = 'none';
+                            article.parentElement.style.display = 'none'; // Hide the parent column
+                        }
+                    }
+                });
+            }
+            else if (filterType === 'all') {
+                // Show all articles - already handled by the initial reset
+            }
+            else if (filterType.startsWith('series-')) {
+                // Show only articles from the selected series
+                const targetSeries = clickedButton.dataset.series;
+                
+                articles.forEach(article => {
+                    if (article.dataset.series === targetSeries) {
+                        article.style.display = 'block';
+                        article.parentElement.style.display = 'block';
+                    } else {
+                        article.style.display = 'none';
+                        article.parentElement.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Force reflow to trigger any CSS transitions
+            void articlesContainer.offsetWidth;
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const latestBtn = document.querySelector('.filter-btn[data-filter="latest"]');
+            if (latestBtn) {
+                latestBtn.click();
+            }
+        });
+  
 </script>
 {% endblock %}

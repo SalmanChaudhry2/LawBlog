@@ -651,6 +651,14 @@ def dashboard():
     articles = FileManager.list_articles()
     metadata = FileManager.get_article_metadata()
     
+    # Get unique series names
+    series_list = set()
+    for article in articles:
+        meta = metadata.get(article, {})
+        if 'series' in meta:
+            series_list.add(meta['series'])
+    series_list = sorted(series_list) if series_list else None
+
     # Combine standard tones with user's custom tones
     standard_tones = [
         ('Professional', 'Formal and business-like tone suitable for corporate audiences'),
@@ -672,7 +680,8 @@ def dashboard():
                          metadata=metadata,
                          tone_options=tone_options,
                          tone_descriptions=tone_descriptions,
-                         user_keywords=user.get('keywords', ''))
+                         user_keywords=user.get('keywords', ''),
+                         series_list=series_list)
 
 @app.route('/add_tone', methods=['POST'])
 def add_tone():

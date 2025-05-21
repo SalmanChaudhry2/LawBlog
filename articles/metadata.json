@@ -1,8 +1,30 @@
 {
     "articles": [
         {
+            "filename": "Celebrity Estate Plans Series Part 1 of 4 - Jay Leno’s Case is No Laughing Matter.docx",
+            "title": "Celebrity Estate Plans Series Part 1 of 4: Jay Leno's Case is No Laughing Matter",
+            "series": "Celebrity Estate Plans Series",
+            "series_order": 1,
+            "series_total": 4,
+            "publish_date": "2025-01-01",
+            "description": "This is first installment of our four-part celebrity series. This document is upload just to check the series navigation"
+        },
+        {
+            "filename": "Celebrity Estate Plans Series Part 2 of 4 - Jay Leno’s Case is No Laughing Matter.docx",
+            "title": "Celebrity Estate Plans Series Part 2 of 4: Jay Leno's Case is No Laughing Matter",
+            "series": "Celebrity Estate Plans Series",
+            "series_order": 2,
+            "series_total": 4,
+            "publish_date": "2025-02-01",
+            "description": "This is second installment of our four-part celebrity series. This document is upload just to check the series navigation"
+        },
+        {
             "filename": "Celebrity Estate Plans Series Part 3 of 4 - Jay Leno’s Case is No Laughing Matter.docx",
             "title": "Celebrity Estate Plans Series Part 3 of 4: Jay Leno's Case is No Laughing Matter",
+            "series": "Celebrity Estate Plans Series",
+            "series_order": 3,
+            "series_total": 4,
+            "publish_date": "2025-03-01",
             "description": "In this third installment of our four-part celebrity series, we discuss a topic that no one wants to think about as it may seem to be a fate worse than death: incapacity."
         },
         {
