@@ -140,7 +140,7 @@ class AzureServices:
         
         self.conversations = {}
 
-    def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location, lawyer_name, city, state):
+    def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location, lawyer_name, city, state, planning_session_name="Life & Legacy Planning Session"):
         response = self.text_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
             messages=[
@@ -169,6 +169,7 @@ class AzureServices:
                         * "put a plan in place that ensures your wishes are honored"
                         * "create a plan that grows with your family and ensures lasting peace of mind"
                     - Emphasize the ongoing relationship and family protection aspects rather than transactional terms
+                    - Use the term "{planning_session_name}" when referencing to planning sessions.
 
                     CONTENT GUIDELINES:
                     DO's:
@@ -195,6 +196,24 @@ class AzureServices:
                     7. Don't exceed 1200 words
                     8. Don't use more than 3 lists
                     
+                    CTA REQUIREMENTS:
+                    1. MUST use the exact phrase "15-minute Discovery Call" (never "consultation" or "consult")
+                    2. Standard format: "Schedule your complimentary 15-minute Discovery Call with {firm_name} today"
+                    3. Include a clear call-to-action like "Click here to schedule" or "Book your Discovery Call now"
+                    4. Never offer to answer questions or provide consultation during this call
+
+                    STYLE GUIDE UPDATES:
+                    1. LANGUAGE PREFERENCE:
+                    - Use "loved ones" instead of "family" in all cases EXCEPT when:
+                        * Referring specifically to legal family members (spouse, children, parents)
+                        * Discussing family law matters specifically related to spouse, children, parents
+                        * The context explicitly requires "family" (e.g., "family business")
+                    - Preferred phrases:
+                        * "protect your loved ones"
+                        * "ensure your loved ones are cared for"
+                        * "keep your loved ones out of court"
+                        * "provide for your loved ones"
+
                     Formatting Requirements:
                     # Main Title
                     ## Subheading 1
@@ -696,6 +715,9 @@ def select_article(article):
         lawyer_name = user.get('lawyer_name', '')
         city = user.get('location', '')
         state = user.get('state', '')
+        planning_session_name = request.form.get('planning_session_name','') 
+        if not planning_session_name:
+            planning_session_name="Life & Legacy Planning Session"
 
         # Generate the blog post with the selected tone
         blog_content = azure_services.rewrite_content(
@@ -707,7 +729,8 @@ def select_article(article):
             location,
             lawyer_name,
             city,
-            state
+            state,
+            planning_session_name
         )
         
         # Save the generated content to a file

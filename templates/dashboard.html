@@ -247,6 +247,16 @@
                                            id="location-{{ article_index }}" placeholder="Location">
                                     <label for="location-{{ article_index }}">Location</label>
                                 </div>
+                                <div class="form-floating mb-3">
+                                    <input type="text" 
+                                        class="form-control" 
+                                            name="planning_session_name-{{ article_index }}" 
+                                            id="planning_session_name-{{ article_index }}" 
+                                            placeholder=" "
+                                            value="">
+                                        <label for="planning_session_name-{{ article_index }}">What's your Planning Session?</label>
+                                </div>
+                                        <small class="text-muted">Leave blank to use "Life & Legacy Planning Session"</small>
                             </div>
                             
                             <!-- Action buttons -->
@@ -384,7 +394,8 @@
                 tone: document.querySelector(`input[name="tone-${index}"]:checked`).value,
                 keywords: document.getElementById(`keywords-hidden-${index}`).value,
                 firm: document.getElementById(`firm-${index}`).value,
-                location: document.getElementById(`location-${index}`).value
+                location: document.getElementById(`location-${index}`).value,
+                planning_session_name: document.getElementById(`planning_session_name-${index}`).value
             };
             
             if (formData.tone === 'custom') {
