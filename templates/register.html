@@ -16,26 +16,19 @@
     .form-group {
         margin-bottom: 1.25rem;
     }
-    .keyword-tag {
-        display: inline-flex;
-        align-items: center;
-        margin-right: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-    .keyword-tag-remove {
-        cursor: pointer;
-        margin-left: 0.25rem;
-    }
-    .keyword-input-group {
-        display: flex;
-        gap: 0.5rem;
-    }
-    .keyword-input-group input {
-        flex-grow: 1;
-    }
     .password-help-text {
         font-size: 0.875rem;
         color: #6c757d;
+    }
+    .planning-session-options {
+        margin-top: 0.5rem;
+    }
+    .planning-session-option {
+        margin-bottom: 0.5rem;
+    }
+    .other-planning-session {
+        margin-top: 0.5rem;
+        display: none;
     }
 </style>
 {% endblock %}
@@ -100,21 +93,57 @@
                             </div>
                         </div>
 
-                        <!-- Keywords Section -->
                         <div class="form-group">
-                            <label class="form-label">Practice Area Keywords</label>
-                            <div class="keyword-input-group mb-2">
-                                <input type="text" class="form-control" id="keyword-input" 
-                                       placeholder="Type a keyword">
-                                <button type="button" class="btn btn-primary" id="add-keyword-btn">
-                                    <i data-feather="plus" class="icon-xs"></i> Add
-                                </button>
+                            <label for="address" class="form-label">Address (Optional)</label>
+                            <input type="text" class="form-control" id="address" name="address" 
+                                   data-bs-toggle="tooltip" 
+                                   data-bs-placement="right" 
+                                   data-bs-html="true"
+                                   title="<strong>Examples:</strong><br>Southern California<br>Tri-state area">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Planning Session</label>
+                            <div class="planning-session-options">
+                                <div class="planning-session-option">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="planning_session" 
+                                               id="planning_session_legacy" value="Life & Legacy Planning Session" required>
+                                        <label class="form-check-label" for="planning_session_legacy">
+                                            Life & Legacy
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="planning-session-option">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="planning_session" 
+                                               id="planning_session_wealth" value="Family Wealth Planning Session">
+                                        <label class="form-check-label" for="planning_session_wealth">
+                                            Family Wealth
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="planning-session-option">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="planning_session" 
+                                               id="planning_session_other" value="other">
+                                        <label class="form-check-label" for="planning_session_other">
+                                            Other
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="other-planning-session" id="other_planning_session">
+                                    <input type="text" class="form-control mt-2" id="other_planning_session_input" 
+                                           name="other_planning_session" placeholder="Please specify">
+                                </div>
                             </div>
-                            <input type="hidden" name="keywords" id="keywords-hidden">
-                            <div class="keywords-preview d-flex flex-wrap" id="keywords-preview">
-                                <!-- Keywords will appear here as tags -->
-                            </div>
-                            <small class="text-muted">Add keywords that describe your practice areas</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="discovery_call_link" class="form-label">15-Minute Discovery Call Booking Link</label>
+                            <input type="url" class="form-control" id="discovery_call_link" name="discovery_call_link" 
+                                   placeholder="https://..." required>
+                            <small class="text-muted">Enter the URL where clients can book their 15-minute discovery call</small>
                         </div>
 
                         <div class="d-grid gap-2 mt-4">
@@ -138,70 +167,36 @@
     document.addEventListener('DOMContentLoaded', function() {
         feather.replace();
         
-        const keywordInput = document.getElementById('keyword-input');
-        const addKeywordBtn = document.getElementById('add-keyword-btn');
-        const keywordsPreview = document.getElementById('keywords-preview');
-        const keywordsHidden = document.getElementById('keywords-hidden');
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
         const form = document.getElementById('registration-form');
-        let keywords = [];
+        const otherPlanningSession = document.getElementById('other_planning_session');
+        const otherPlanningSessionInput = document.getElementById('other_planning_session_input');
+        const planningSessionOther = document.getElementById('planning_session_other');
 
-        // Update the display and hidden field
-        function updateKeywords() {
-            keywordsPreview.innerHTML = '';
-            keywords.forEach(keyword => {
-                const tag = document.createElement('div');
-                tag.className = 'keyword-tag badge bg-primary';
-                tag.innerHTML = `
-                    ${keyword}
-                    <span class="keyword-tag-remove" data-keyword="${keyword}">
-                        <i data-feather="x" class="icon-xs"></i>
-                    </span>
-                `;
-                keywordsPreview.appendChild(tag);
+        // Show/hide other planning session input
+        document.querySelectorAll('input[name="planning_session"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.value === 'other') {
+                    otherPlanningSession.style.display = 'block';
+                    otherPlanningSessionInput.required = true;
+                } else {
+                    otherPlanningSession.style.display = 'none';
+                    otherPlanningSessionInput.required = false;
+                }
             });
-            keywordsHidden.value = keywords.join(',');
-            feather.replace();
-        }
+        });
 
-        // Add a keyword
-        function addKeyword() {
-            const keyword = keywordInput.value.trim();
-            if (keyword && !keywords.includes(keyword)) {
-                keywords.push(keyword);
-                updateKeywords();
-                keywordInput.value = '';
-                keywordInput.focus();
-            }
-        }
-
-        // Remove a keyword
-        function removeKeyword(keyword) {
-            keywords = keywords.filter(k => k !== keyword);
-            updateKeywords();
-        }
-
-        // Add keyword button click
-        addKeywordBtn.addEventListener('click', addKeyword);
-
-        // Add keyword on Enter key
-        keywordInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
+        // Form submission handling
+        form.addEventListener('submit', function(e) {
+            if (planningSessionOther.checked && !otherPlanningSessionInput.value.trim()) {
                 e.preventDefault();
-                addKeyword();
+                alert('Please specify the other planning session type');
             }
-        });
-
-        // Remove keyword when x is clicked
-        keywordsPreview.addEventListener('click', function(e) {
-            if (e.target.closest('.keyword-tag-remove')) {
-                const keyword = e.target.closest('.keyword-tag-remove').dataset.keyword;
-                removeKeyword(keyword);
-            }
-        });
-
-        // Ensure keywords are submitted with the form
-        form.addEventListener('submit', function() {
-            keywordsHidden.value = keywords.join(',');
         });
     });
 </script>

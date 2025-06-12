@@ -1,0 +1,247 @@
+/* NLBM Design System - Main Styles */
+
+/* Import Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&display=swap');
+
+/* Reset and Base Styles */
+:root {
+    /* Colors */
+    --nlbm-primary: #002060;
+    --nlbm-secondary: #004080;
+    --nlbm-accent-gold: #D4AF37;
+    --nlbm-accent-teal: #008080;
+    --nlbm-dark-gray: #333333;
+    --nlbm-medium-gray: #666666;
+    --nlbm-light-gray: #F5F5F5;
+    --nlbm-white: #FFFFFF;
+
+    /* Typography */
+    --font-primary: 'Inter', sans-serif;
+    --font-secondary: 'Merriweather', serif;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-primary);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--nlbm-dark-gray);
+    background-color: var(--nlbm-light-gray);
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-secondary);
+    font-weight: 700;
+    color: var(--nlbm-primary);
+}
+
+h1 { font-size: 32px; }
+h2 { font-size: 24px; }
+h3 { font-size: 20px; }
+
+/* Layout */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px;
+}
+
+/* Header */
+.nlbm-header {
+    height: 64px;
+    background-color: var(--nlbm-white);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+}
+
+.nlbm-header .logo {
+    height: 40px;
+}
+
+.nlbm-header .logo img {
+    height: 100%;
+    width: auto;
+}
+
+.main-nav {
+    margin-left: 48px;
+    display: flex;
+    gap: 24px;
+}
+
+/* Authentication Pages */
+.nlbm-auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--nlbm-light-gray);
+    padding: 24px;
+}
+
+.auth-container {
+    width: 100%;
+    max-width: 400px;
+}
+
+.auth-card {
+    background-color: var(--nlbm-white);
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.auth-logo {
+    height: 40px;
+    margin-bottom: 24px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Buttons */
+.nlbm-btn-primary {
+    background-color: var(--nlbm-primary);
+    color: var(--nlbm-white);
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 16px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nlbm-btn-primary:hover {
+    background-color: var(--nlbm-secondary);
+}
+
+.nlbm-btn-secondary {
+    background-color: var(--nlbm-white);
+    color: var(--nlbm-primary);
+    border: 2px solid var(--nlbm-primary);
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 16px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nlbm-btn-secondary:hover {
+    background-color: var(--nlbm-light-gray);
+}
+
+/* Form Elements */
+.nlbm-input {
+    height: 48px;
+    padding: 0 16px;
+    border: 1px solid var(--nlbm-medium-gray);
+    border-radius: 4px;
+    font-size: 16px;
+    transition: border-color 0.2s;
+    font-family: var(--font-primary);
+}
+
+.nlbm-input:focus {
+    border-color: var(--nlbm-primary);
+    outline: none;
+}
+
+.nlbm-label {
+    font-size: 14px;
+    color: var(--nlbm-dark-gray);
+    font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+    .auth-container {
+        padding: 16px;
+    }
+    
+    .auth-card {
+        padding: 24px;
+    }
+    
+    h1 { font-size: 28px; }
+    h2 { font-size: 22px; }
+    h3 { font-size: 18px; }
+}
+
+/* Utility Classes */
+.text-center { text-align: center; }
+.mt-1 { margin-top: 4px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 16px; }
+.mt-4 { margin-top: 24px; }
+.mt-5 { margin-top: 32px; }
+
+.mb-1 { margin-bottom: 4px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 16px; }
+.mb-4 { margin-bottom: 24px; }
+.mb-5 { margin-bottom: 32px; }
+
+/* Error States */
+.error-message {
+    color: #DC2626;
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+.nlbm-input.error {
+    border-color: #DC2626;
+}
+
+/* Success States */
+.success-message {
+    color: var(--nlbm-accent-teal);
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+/* Loading States */
+.nlbm-btn-primary.loading,
+.nlbm-btn-secondary.loading {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Focus States */
+.nlbm-btn-primary:focus,
+.nlbm-btn-secondary:focus,
+.nlbm-input:focus {
+    outline: 2px solid var(--nlbm-primary);
+    outline-offset: 2px;
+} 

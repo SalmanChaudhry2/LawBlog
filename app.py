@@ -10,7 +10,7 @@ import markdown
 from bs4 import BeautifulSoup
 from flask_session import Session
 import json
-import sqlite3
+import pyodbc
 from io import BytesIO
 from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
@@ -23,7 +23,12 @@ load_dotenv()
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.getenv('FLASK_SECRET_KEY')
 app.config['UPLOAD_FOLDER'] = 'static/generated'
-app.config['DATABASE'] = os.path.join(app.instance_path, 'app.db')
+
+# Database configuration
+app.config['AZURE_SQL_SERVER'] = os.getenv('AZURE_SQL_SERVER')
+app.config['AZURE_SQL_DATABASE'] = os.getenv('AZURE_SQL_DATABASE')
+app.config['AZURE_SQL_USERNAME'] = os.getenv('AZURE_SQL_USERNAME')
+app.config['AZURE_SQL_PASSWORD'] = os.getenv('AZURE_SQL_PASSWORD')
 
 # Session configuration
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -33,11 +38,17 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 Session(app)
 
-# Database functions
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(app.config['DATABASE'])
-        g.db.row_factory = sqlite3.Row
+        conn_str = (
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+            f"SERVER={app.config['AZURE_SQL_SERVER']};"
+            f"DATABASE={app.config['AZURE_SQL_DATABASE']};"
+            f"UID={app.config['AZURE_SQL_USERNAME']};"
+            f"PWD={app.config['AZURE_SQL_PASSWORD']};"
+            "Encrypt=yes;TrustServerCertificate=no;"
+        )
+        g.db = pyodbc.connect(conn_str)
     return g.db
 
 def close_db(e=None):
@@ -46,47 +57,85 @@ def close_db(e=None):
         db.close()
 
 def init_db():
-    os.makedirs(app.instance_path, exist_ok=True)
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
         
-        # Create users table
+        # Create users table if it doesn't exist
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            firm TEXT,
-            location TEXT,
-            lawyer_name TEXT,
-            state TEXT,
-            keywords TEXT    
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'users')
+        CREATE TABLE users (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            username NVARCHAR(255) UNIQUE NOT NULL,
+            email NVARCHAR(255) UNIQUE NOT NULL,
+            password NVARCHAR(255) NOT NULL,
+            firm NVARCHAR(255),
+            location NVARCHAR(255),
+            lawyer_name NVARCHAR(255),
+            state NVARCHAR(50),
+            address NVARCHAR(255),
+            planning_session NVARCHAR(255),
+            other_planning_session NVARCHAR(255),
+            discovery_call_link NVARCHAR(255)
         )
         ''')
         
-        # Create tones table
+        # Add new columns if they don't exist
+        try:
+            cursor.execute('''
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'address')
+            ALTER TABLE users ADD address NVARCHAR(255)
+            ''')
+        except pyodbc.Error:
+            pass
+            
+        try:
+            cursor.execute('''
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'planning_session')
+            ALTER TABLE users ADD planning_session NVARCHAR(255)
+            ''')
+        except pyodbc.Error:
+            pass
+            
+        try:
+            cursor.execute('''
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'other_planning_session')
+            ALTER TABLE users ADD other_planning_session NVARCHAR(255)
+            ''')
+        except pyodbc.Error:
+            pass
+            
+        try:
+            cursor.execute('''
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'discovery_call_link')
+            ALTER TABLE users ADD discovery_call_link NVARCHAR(255)
+            ''')
+        except pyodbc.Error:
+            pass
+        
+        # Create tones table if it doesn't exist
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            description TEXT NOT NULL,
-            UNIQUE(user_id, name),
-            FOREIGN KEY(user_id) REFERENCES users(id)
+        IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'tones')
+        CREATE TABLE tones (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            user_id INT NOT NULL,
+            name NVARCHAR(255) NOT NULL,
+            description NVARCHAR(MAX) NOT NULL,
+            CONSTRAINT UQ_user_tone UNIQUE(user_id, name),
+            CONSTRAINT FK_user_tone FOREIGN KEY(user_id) REFERENCES users(id)
         )
         ''')
         
-        # Insert default users if they don't exist
+        # Check if default users exist
         cursor.execute("SELECT * FROM users WHERE username IN ('admin', 'memberhub')")
         existing_users = cursor.fetchall()
-        existing_usernames = [user['username'] for user in existing_users]
+        existing_usernames = [user.username for user in existing_users]
         
         if 'admin' not in existing_usernames:
             cursor.execute('''
-            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, keywords)
-            VALUES (?, ?, ?, ?, ?, ?, ?,?)
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, address, 
+                             planning_session, other_planning_session, discovery_call_link)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 'admin', 
                 'admin@lawfirm.com', 
@@ -95,13 +144,17 @@ def init_db():
                 'New York', 
                 'John', 
                 'NY',
-                'Personal Family Lawyer,Estate Planning Firm, Life & Legacy Planning'
+                '',
+                '',
+                '',
+                ''
             ))
         
         if 'memberhub' not in existing_usernames:
             cursor.execute('''
-            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, keywords)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, address, 
+                             planning_session, other_planning_session, discovery_call_link)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 'memberhub', 
                 'memberhub@newlawbusinessmodel.com', 
@@ -110,7 +163,10 @@ def init_db():
                 'Global', 
                 'Member Hub', 
                 'CA',
-                'Trusted estate planning firm, Asset protection services, Estate planning attorney'
+                '',
+                '',
+                '',
+                ''
             ))
         
         db.commit()
@@ -124,11 +180,140 @@ with app.app_context():
 def inject_year():
     return {'now': datetime.now()}
 
+class UserSession:
+    @staticmethod
+    def register(email, password, firm, location, lawyer_name, state, address="", planning_session="", other_planning_session="", discovery_call_link=""):
+        db = get_db()
+        username = email.split('@')[0].lower()
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, address, 
+                             planning_session, other_planning_session, discovery_call_link)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (username, email, password, firm, location, lawyer_name, state, address, 
+                 planning_session, other_planning_session, discovery_call_link))
+            db.commit()
+            return True
+        except pyodbc.IntegrityError:
+            return False
+
+    @staticmethod
+    def login(email, password):
+        db = get_db()
+        username = email.split('@')[0].lower()
+        cursor = db.cursor()
+        cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+        user = cursor.fetchone()
+        
+        if user and user.password == password:
+            # Get user's custom tones
+            cursor.execute('SELECT name, description FROM tones WHERE user_id = ?', (user.id,))
+            tones = cursor.fetchall()
+            
+            session['user'] = {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'firm': user.firm,
+                'location': user.location,
+                'lawyer_name': user.lawyer_name,
+                'state': user.state,
+                'address': user.address,
+                'planning_session': user.planning_session,
+                'other_planning_session': user.other_planning_session,
+                'discovery_call_link': user.discovery_call_link,
+                'custom_tones': [{'name': tone.name, 'description': tone.description} for tone in tones]
+            }
+            return True
+        return False
+
+    @staticmethod
+    def update_profile(username, firm, location, lawyer_name, state, address="", planning_session="", other_planning_session="", discovery_call_link=""):
+        db = get_db()
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            UPDATE users 
+            SET firm = ?, location = ?, lawyer_name = ?, state = ?, 
+                address = ?, planning_session = ?, other_planning_session = ?, discovery_call_link = ?
+            WHERE username = ?
+            ''', (firm, location, lawyer_name, state, address, planning_session, 
+                 other_planning_session, discovery_call_link, username))
+            db.commit()
+            
+            # Update session if this is the current user
+            if 'user' in session and session['user']['username'] == username:
+                session['user'].update({
+                    'firm': firm,
+                    'location': location,
+                    'lawyer_name': lawyer_name,
+                    'state': state,
+                    'address': address,
+                    'planning_session': planning_session,
+                    'other_planning_session': other_planning_session,
+                    'discovery_call_link': discovery_call_link
+                })
+                session.modified = True
+            return True
+        except pyodbc.Error:
+            return False
+
+    @staticmethod
+    def get_current_user():
+        return session.get('user')
+
+    @staticmethod
+    def add_custom_tone(user_id, tone_name, tone_description):
+        db = get_db()
+        try:
+            cursor = db.cursor()
+            cursor.execute('''
+            INSERT INTO tones (user_id, name, description)
+            VALUES (?, ?, ?)
+            ''', (user_id, tone_name, tone_description))
+            db.commit()
+            
+            # Update session if this is the current user
+            if 'user' in session and session['user']['id'] == user_id:
+                session['user']['custom_tones'].append({
+                    'name': tone_name,
+                    'description': tone_description
+                })
+                session.modified = True
+            return True
+        except pyodbc.IntegrityError:
+            return False
+    
+    @staticmethod
+    def get_custom_tones(user_id):
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT name, description FROM tones WHERE user_id = ?', (user_id,))
+        tones = cursor.fetchall()
+        return [{'name': tone.name, 'description': tone.description} for tone in tones]
+
 class Config:
     ARTICLES_DIR = "articles"
     GENERATED_DIR = "generated"
     os.makedirs(ARTICLES_DIR, exist_ok=True)
     os.makedirs(GENERATED_DIR, exist_ok=True)
+
+    # Default section markers (can be updated based on client requirements)
+    SECTION_MARKERS = {
+        'hook': {
+            'start': 0,  # First paragraph
+            'end': 1     # End of first paragraph
+        },
+        'plug': {
+            'start': 3,  # Fourth paragraph
+            'end': 4     # End of fourth paragraph
+        },
+        'disclaimer': {
+            'start': -1,  # Last paragraph
+            'end': None   # End of content
+        }
+    }
 
 class AzureServices:
     def __init__(self):
@@ -140,95 +325,188 @@ class AzureServices:
         
         self.conversations = {}
 
+    def _extract_sections(self, content):
+        """Extract and preserve specific sections from the content."""
+        try:
+            paragraphs = content.split('\n\n')
+            preserved_sections = {}
+            
+            # Extract Hook
+            hook_start = Config.SECTION_MARKERS['hook']['start']
+            hook_end = Config.SECTION_MARKERS['hook']['end']
+            if hook_start < len(paragraphs):
+                preserved_sections['hook'] = '\n\n'.join(paragraphs[hook_start:hook_end])
+                print(f"Preserved Hook: {preserved_sections['hook'][:100]}...")
+            else:
+                print("Warning: Hook section not found in content")
+                preserved_sections['hook'] = ""
+            
+            # Extract Plug
+            plug_start = Config.SECTION_MARKERS['plug']['start']
+            plug_end = Config.SECTION_MARKERS['plug']['end']
+            if plug_start < len(paragraphs):
+                preserved_sections['plug'] = '\n\n'.join(paragraphs[plug_start:plug_end])
+                print(f"Preserved Plug: {preserved_sections['plug'][:100]}...")
+            else:
+                print("Warning: Plug section not found in content")
+                preserved_sections['plug'] = ""
+            
+            # Extract Disclaimer
+            disclaimer_start = Config.SECTION_MARKERS['disclaimer']['start']
+            disclaimer_end = Config.SECTION_MARKERS['disclaimer']['end']
+            if disclaimer_start == -1 and len(paragraphs) > 0:
+                preserved_sections['disclaimer'] = paragraphs[-1]
+                print(f"Preserved Disclaimer: {preserved_sections['disclaimer'][:100]}...")
+            else:
+                print("Warning: Disclaimer section not found in content")
+                preserved_sections['disclaimer'] = ""
+            
+            return preserved_sections
+        except Exception as e:
+            print(f"Error extracting sections: {str(e)}")
+            return {'hook': "", 'plug': "", 'disclaimer': ""}
+
+    def _reconstruct_content(self, new_content, preserved_sections):
+        """Reconstruct content with preserved sections."""
+        try:
+            paragraphs = new_content.split('\n\n')
+            
+            # Insert preserved sections at their original positions
+            if Config.SECTION_MARKERS['hook']['start'] == 0 and preserved_sections['hook']:
+                paragraphs[0] = preserved_sections['hook']
+                print("Reconstructed Hook section")
+            
+            plug_start = Config.SECTION_MARKERS['plug']['start']
+            if plug_start < len(paragraphs) and preserved_sections['plug']:
+                paragraphs[plug_start] = preserved_sections['plug']
+                print("Reconstructed Plug section")
+            
+            if Config.SECTION_MARKERS['disclaimer']['start'] == -1 and preserved_sections['disclaimer']:
+                paragraphs[-1] = preserved_sections['disclaimer']
+                print("Reconstructed Disclaimer section")
+            
+            final_content = '\n\n'.join(paragraphs)
+            
+            # Verify sections are preserved
+            if preserved_sections['hook'] and preserved_sections['hook'] not in final_content:
+                print("Warning: Hook section not found in final content")
+            if preserved_sections['plug'] and preserved_sections['plug'] not in final_content:
+                print("Warning: Plug section not found in final content")
+            if preserved_sections['disclaimer'] and preserved_sections['disclaimer'] not in final_content:
+                print("Warning: Disclaimer section not found in final content")
+            
+            return final_content
+        except Exception as e:
+            print(f"Error reconstructing content: {str(e)}")
+            return new_content
+
     def rewrite_content(self, original_text, tone, tone_description, keywords, firm_name, location, lawyer_name, city, state, planning_session_name="Life & Legacy Planning Session"):
-        response = self.text_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
-            messages=[
-                {"role": "system", "content": f"""
-                    You are a legal blog post rewriter. There should be At least 30% changes from original. Rewrite the article following these strict guidelines:
-                    SEO REQUIREMENTS:
-                    1. Must include these elements within the first 150 words:
-                       - Primary keywords: {keywords}
-                       - Firm name: {firm_name}
-                       - City-state of firm: {location}
-                       - Lawyer name: {lawyer_name}
-                       - City-state of Lawyer: {city}, {state}
-                    2. Incorporate naturally - don't just list them
-                    
-                    TONE REQUIREMENTS:
-                    1. Primary Tone: {tone}
-                    2. Tone Description: {tone_description}
-                    3. Consistency: Maintain this tone throughout the entire article
-                    
-                    SPECIAL BRANDING REQUIREMENTS:
-                    - Avoid transactional language like "investing in" which are not aligned with the Personal Family Lawyer® brand tone
-                    - Instead use phrases like:
-                        * "work with us to choose a plan that works to keep your loved ones out of court and out of conflict"
-                        * "create a plan that protects what matters most"
-                        * "develop a comprehensive approach to safeguarding your family's future"
-                        * "put a plan in place that ensures your wishes are honored"
-                        * "create a plan that grows with your family and ensures lasting peace of mind"
-                    - Emphasize the ongoing relationship and family protection aspects rather than transactional terms
-                    - Use the term "{planning_session_name}" when referencing to planning sessions.
+        try:
+            # Extract sections to preserve
+            print("\nExtracting sections to preserve...")
+            preserved_sections = self._extract_sections(original_text)
+            
+            # Add explicit instructions about preserving sections
+            system_prompt = f"""
+                You are a legal blog post rewriter. There should be At least 30% changes from original. Rewrite the article following these strict guidelines:
+                
+                CRITICAL: DO NOT MODIFY THESE SECTIONS:
+                1. The first paragraph (Hook) - Keep it exactly as is
+                2. The fourth paragraph (Plug) - Keep it exactly as is
+                3. The last paragraph (Disclaimer) - Keep it exactly as is
+                
+                These sections must remain unchanged in both content and position.
+                
+                SEO REQUIREMENTS:
+                1. Must include these elements within the first 150 words:
+                   - Primary keywords: {keywords}
+                   - Firm name: {firm_name}
+                   - City-state of firm: {location}
+                   - Lawyer name: {lawyer_name}
+                   - City-state of Lawyer: {city}, {state}
+                2. Incorporate naturally - don't just list them
+                
+                TONE REQUIREMENTS:
+                1. Primary Tone: {tone}
+                2. Tone Description: {tone_description}
+                3. Consistency: Maintain this tone throughout the entire article
+                
+                SPECIAL BRANDING REQUIREMENTS:
+                - Avoid transactional language like "investing in" which are not aligned with the Personal Family Lawyer® brand tone
+                - Instead use phrases like:
+                    * "work with us to choose a plan that works to keep your loved ones out of court and out of conflict"
+                    * "create a plan that protects what matters most"
+                    * "develop a comprehensive approach to safeguarding your family's future"
+                    * "put a plan in place that ensures your wishes are honored"
+                    * "create a plan that grows with your family and ensures lasting peace of mind"
+                - Emphasize the ongoing relationship and family protection aspects rather than transactional terms
+                - Use the term "{planning_session_name}" when referencing to planning sessions.
 
-                    CONTENT GUIDELINES:
-                    DO's:
-                    1. Use active voice
-                    2. Structure with 5 sections: introduction, 3 subheadings, and conclusion with call-to-action
-                    3. Keep length between 1000-1200 words
-                    4. Use transition sentences between sections
-                    5. Conclusion should be brief (1-2 sentences) with clear call-to-action
-                    6. Include 1-2 bulleted lists in the entire article
-                    7. Balance paragraphs and lists appropriately
-                    8. Write in a {tone} tone
-                    9. Include these keywords naturally: {keywords}
-                    10. Mention {firm_name} in {location} where relevant
-                    11. Firm name is {firm_name} and location is {location}
-                    12 Lawyer name is {lawyer_name} and location is {city}, {state}
-                    
-                    DON'Ts:
-                    1. Avoid legal jargon or complex language (keep it high-school level)
-                    2. No passive voice
-                    3. Don't use lists without context
-                    4. Limit metaphors
-                    5. Don't make conclusion too long
-                    6. Don't include more than 5 sources
-                    7. Don't exceed 1200 words
-                    8. Don't use more than 3 lists
-                    
-                    CTA REQUIREMENTS:
-                    1. MUST use the exact phrase "15-minute Discovery Call" (never "consultation" or "consult")
-                    2. Standard format: "Schedule your complimentary 15-minute Discovery Call with {firm_name} today"
-                    3. Include a clear call-to-action like "Click here to schedule" or "Book your Discovery Call now"
-                    4. Never offer to answer questions or provide consultation during this call
-
-                    STYLE GUIDE UPDATES:
-                    1. LANGUAGE PREFERENCE:
-                    - Use "loved ones" instead of "family" in all cases EXCEPT when:
-                        * Referring specifically to legal family members (spouse, children, parents)
-                        * Discussing family law matters specifically related to spouse, children, parents
-                        * The context explicitly requires "family" (e.g., "family business")
-                    - Preferred phrases:
-                        * "protect your loved ones"
-                        * "ensure your loved ones are cared for"
-                        * "keep your loved ones out of court"
-                        * "provide for your loved ones"
-
-                    Formatting Requirements:
-                    # Main Title
-                    ## Subheading 1
-                    ### Sub-subheading (if needed)
-                    **Bold important terms**
-                    - Bullet points when appropriate
-                    [Link text](URL) for references
-                    
-                    The article must be valuable, engaging, and optimized for both readers and search engines.
-                """},
-                {"role": "user", "content": original_text}
-            ],
-            temperature=0.7,
-        )
-        return response.choices[0].message.content
+                CONTENT GUIDELINES:
+                DO's:
+                1. Use active voice
+                2. Structure with 5 sections: introduction, 3 subheadings, and conclusion with call-to-action
+                3. Keep length between 1000-1200 words
+                4. Use transition sentences between sections
+                5. Conclusion should be brief (1-2 sentences) with clear call-to-action
+                6. Include 1-2 bulleted lists in the entire article
+                7. Balance paragraphs and lists appropriately
+                8. Write in a {tone} tone
+                9. Include these keywords naturally: {keywords}
+                10. Mention {firm_name} in {location} where relevant
+                11. Firm name is {firm_name} and location is {location}
+                12 Lawyer name is {lawyer_name} and location is {city}, {state}
+                
+                DON'Ts:
+                1. Avoid legal jargon or complex language (keep it high-school level)
+                2. No passive voice
+                3. Don't use lists without context
+                4. Limit metaphors
+                5. Don't make conclusion too long
+                6. Don't include more than 5 sources
+                7. Don't exceed 1200 words
+                8. Don't use more than 3 lists
+                
+                CTA REQUIREMENTS:
+                1. MUST use the exact phrase "15-minute Discovery Call" (never "consultation" or "consult")
+                2. Standard format: "Schedule your complimentary 15-minute Discovery Call with {firm_name} today"
+                3. Include a clear call-to-action like "Click here to schedule" or "Book your Discovery Call now"
+                4. Never offer to answer questions or provide consultation during this call
+                
+                Formatting Requirements:
+                # Main Title
+                ## Subheading 1
+                ### Sub-subheading (if needed)
+                **Bold important terms**
+                - Bullet points when appropriate
+                [Link text](URL) for references
+                
+                The article must be valuable, engaging, and optimized for both readers and search engines.
+            """
+            
+            print("\nGenerating rewritten content...")
+            response = self.text_client.chat.completions.create(
+                model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": original_text}
+                ],
+                temperature=0.7,
+            )
+            
+            # Get the rewritten content
+            rewritten_content = response.choices[0].message.content
+            
+            # Reconstruct the content with preserved sections
+            print("\nReconstructing content with preserved sections...")
+            final_content = self._reconstruct_content(rewritten_content, preserved_sections)
+            
+            print("\nArticle generation complete!")
+            return final_content
+            
+        except Exception as e:
+            print(f"Error in rewrite_content: {str(e)}")
+            return original_text
 
     def edit_content(self, session_id, user_message, current_content=None):
         if session_id not in self.conversations:
@@ -460,113 +738,6 @@ class FileManager:
         file_stream.seek(0)
         return file_stream
 
-class UserSession:
-    @staticmethod
-    def register(email, password, firm, location, lawyer_name, state, keywords=""):
-        db = get_db()
-        username = email.split('@')[0].lower()
-        try:
-            cursor = db.cursor()
-            cursor.execute('''
-            INSERT INTO users (username, email, password, firm, location, lawyer_name, state, keywords)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (username, email, password, firm, location, lawyer_name, state, keywords))
-            db.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
-
-    @staticmethod
-    def login(email, password):
-        db = get_db()
-        username = email.split('@')[0].lower()
-        user = db.execute(
-            'SELECT * FROM users WHERE username = ?', 
-            (username,)
-        ).fetchone()
-        
-        if user and user['password'] == password:
-            # Get user's custom tones
-            tones = db.execute(
-                'SELECT name, description FROM tones WHERE user_id = ?',
-                (user['id'],)
-            ).fetchall()
-            
-            session['user'] = {
-                'id': user['id'],
-                'username': user['username'],
-                'email': user['email'],
-                'firm': user['firm'],
-                'location': user['location'],
-                'lawyer_name': user['lawyer_name'],
-                'state': user['state'],
-                'keywords': user['keywords'],
-                'custom_tones': [dict(tone) for tone in tones]
-            }
-            return True
-        return False
-
-    @staticmethod
-    def update_profile(username, firm, location, lawyer_name, state, keywords):
-        db = get_db()
-        try:
-            cursor = db.cursor()
-            cursor.execute('''
-            UPDATE users 
-            SET firm = ?, location = ?, lawyer_name = ?, state = ?, keywords = ?
-            WHERE username = ?
-            ''', (firm, location, lawyer_name, state, keywords, username))
-            db.commit()
-            
-            # Update session if this is the current user
-            if 'user' in session and session['user']['username'] == username:
-                session['user'].update({
-                    'firm': firm,
-                    'location': location,
-                    'lawyer_name': lawyer_name,
-                    'state': state,
-                    'keywords': keywords
-                })
-                session.modified = True
-            return True
-        except sqlite3.Error:
-            return False
-        
-    @staticmethod
-    def add_custom_tone(user_id, tone_name, tone_description):
-        db = get_db()
-        try:
-            cursor = db.cursor()
-            cursor.execute('''
-            INSERT INTO tones (user_id, name, description)
-            VALUES (?, ?, ?)
-            ''', (user_id, tone_name, tone_description))
-            db.commit()
-            
-            # Update session if this is the current user
-            if 'user' in session and session['user']['id'] == user_id:
-                session['user']['custom_tones'].append({
-                    'name': tone_name,
-                    'description': tone_description
-                })
-                session.modified = True
-            return True
-        except sqlite3.IntegrityError:
-            return False
-    
-    @staticmethod
-    def get_custom_tones(user_id):
-        db = get_db()
-        tones = db.execute(
-            'SELECT name, description FROM tones WHERE user_id = ?',
-            (user_id,)
-        ).fetchall()
-        return [dict(tone) for tone in tones]
-    
-    @staticmethod
-    def get_current_user():
-        return session.get('user')
-
 azure_services = AzureServices()
 image_generator = ImageGenerator()
 
@@ -591,8 +762,13 @@ def register():
         location = request.form['location']
         lawyer_name = request.form['lawyer_name']
         state = request.form['state']
-        keywords = request.form.get('keywords', '')
-        if UserSession.register(email, password, firm, location, lawyer_name, state, keywords):
+        address = request.form.get('address', '')
+        planning_session = request.form.get('planning_session', '')
+        other_planning_session = request.form.get('other_planning_session', '')
+        discovery_call_link = request.form.get('discovery_call_link', '')
+
+        if UserSession.register(email, password, firm, location, lawyer_name, state, 
+                              address, planning_session, other_planning_session, discovery_call_link):
             # Auto-login after registration
             UserSession.login(email, password)
             return redirect(url_for('dashboard'))
@@ -986,6 +1162,16 @@ def generate_image():
 @app.teardown_appcontext
 def teardown_db(exception):
     close_db()
+
+@app.route('/preview_article/<article>')
+def preview_article(article):
+    try:
+        content = FileManager.read_docx(article)
+        # Convert the content to HTML for preview
+        html_content = markdown.markdown(content)
+        return jsonify({'content': html_content})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

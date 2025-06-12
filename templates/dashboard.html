@@ -123,10 +123,117 @@
         flex: 1 1 300px;
         max-width: calc(33.333% - 1rem);
     }
+
+    /* Preview button styles */
+    .preview-btn {
+        background: none;
+        border: none;
+        color: var(--nlbm-primary);
+        padding: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .preview-btn:hover {
+        color: var(--nlbm-secondary);
+    }
+
+    .preview-btn i {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Article header with preview button */
+    .article-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1rem;
+    }
+
+    /* Slide-in preview dialog */
+    .preview-dialog {
+        position: fixed;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        max-width: 600px;
+        height: 100vh;
+        background: white;
+        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+        z-index: 1000;
+        transition: left 0.3s ease-in-out;
+        overflow-y: auto;
+    }
+
+    .preview-dialog.active {
+        left: 0;
+    }
+
+    .preview-header {
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 1;
+    }
+
+    .preview-content {
+        padding: 1.5rem;
+    }
+
+    .preview-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        display: none;
+    }
+
+    .preview-overlay.active {
+        display: block;
+    }
+
+    .close-preview {
+        background: none;
+        border: none;
+        color: var(--nlbm-medium-gray);
+        cursor: pointer;
+        padding: 8px;
+        transition: color 0.2s;
+    }
+
+    .close-preview:hover {
+        color: var(--nlbm-dark-gray);
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Add preview dialog -->
+<div class="preview-overlay" id="previewOverlay"></div>
+<div class="preview-dialog" id="previewDialog">
+    <div class="preview-header">
+        <h3 class="preview-title mb-0">Article Preview</h3>
+        <button class="close-preview" id="closePreview">
+            <i data-feather="x"></i>
+        </button>
+    </div>
+    <div class="preview-content" id="previewContent">
+        <!-- Content will be loaded here -->
+    </div>
+</div>
+
 <div class="card shadow-sm">
     <!-- Toast notification -->
     <div class="toast-container">
@@ -189,9 +296,15 @@
                     data-series-index="{{ meta.series_order if meta.series_order else 0 }}"
                     data-publish-date="{{ meta.publish_date if meta.publish_date else '' }}">
                     <div class="card-body">
-                        <!-- Article icon -->
+                        <!-- Article header with preview button -->
+                        <div class="article-header">
                         <div class="article-icon">
                             <i data-feather="file-text"></i>
+                            </div>
+                            <button class="preview-btn" data-article="{{ article }}" title="Preview Article">
+                                <i data-feather="eye"></i>
+                                <span>Preview</span>
+                            </button>
                         </div>
                         
                         <!-- Article title -->
@@ -206,129 +319,92 @@
                         
                         <!-- Article selection form -->
                         <form method="POST" action="{{ url_for('select_article', article=article) }}" class="mb-3 article-form">
+                            <input type="hidden" name="firm" value="{{ user.firm }}">
+                            <input type="hidden" name="location" value="{{ user.location }}">
+                            <input type="hidden" name="lawyer_name" value="{{ user.lawyer_name }}">
+                            <input type="hidden" name="state" value="{{ user.state }}">
+                            <input type="hidden" name="address" value="{{ user.address }}">
+                            <input type="hidden" name="planning_session" value="{{ user.planning_session }}">
+                            <input type="hidden" name="other_planning_session" value="{{ user.other_planning_session }}">
+                            <input type="hidden" name="discovery_call_link" value="{{ user.discovery_call_link }}">
                             <button type="submit" class="btn btn-primary w-100">
-                                <i data-feather="edit-2" class="icon-sm me-1"></i>Select Article
+                                <i data-feather="edit-2" class="icon-sm me-1"></i>Generate Article
                             </button>
                         </form>
                         
-                        <!-- Tone selection section -->
-                        <div id="tone-selection-{{ article_index }}" class="tone-selection" style="display: none;">
-                            <h3 class="h6 mb-3">Select Writing Tone</h3>
-                            
-                            <!-- Standard tone options -->
-                            {% for tone in tone_options %}
-                            <div class="tone-option" id="tone-option-{{ loop.index }}-{{ article_index }}">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="tone-{{ article_index }}" 
-                                           id="tone-{{ loop.index }}-{{ article_index }}" value="{{ tone }}"
-                                           data-description="{{ tone_descriptions[tone] }}"
-                                           {% if loop.first %}checked{% endif %}>
-                                    <label class="form-check-label" for="tone-{{ loop.index }}-{{ article_index }}">
-                                        <strong>{{ tone }}</strong>
-                                    </label>
-                                </div>
-                                <div class="tone-description">{{ tone_descriptions[tone] }}</div>
+                        <!-- Article details preview -->
+                        <div class="mt-3">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <button class="btn btn-link text-decoration-none p-0 d-flex align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#userInfoCollapse" aria-expanded="false" aria-controls="userInfoCollapse">
+                                    <i data-feather="chevron-right" class="icon-sm me-2 collapse-icon"></i>
+                                    <h3 class="h6 mb-0">Your Information</h3>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light border edit-info-btn">
+                                    <i data-feather="edit-2" class="icon-sm"></i>
+                                </button>
                             </div>
-                            <input type="hidden" id="tone-description-{{ article_index }}" name="tone-description-{{ article_index }}">
-                            {% endfor %}
-                            
-                            <!-- Create new tone option -->
-                            <div class="tone-option" id="tone-option-new-{{ article_index }}">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="tone-{{ article_index }}" 
-                                           id="tone-new-{{ article_index }}" value="custom">
-                                    <label class="form-check-label" for="tone-new-{{ article_index }}">
-                                        <strong>Create New Tone</strong>
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <!-- Custom tone input section -->
-                            <div id="customToneGroup-{{ article_index }}" class="custom-tone-container" style="display: none;">
-                                <div class="form-floating mb-2">
-                                    <textarea class="form-control" id="customTone-{{ article_index }}"
-                                              placeholder="Describe your desired tone..." style="height: 100px"></textarea>
-                                    <label for="customTone-{{ article_index }}">Describe your preferred tone</label>
-                                </div>
-                                
-                                <!-- Save tone section -->
-                                <div id="save-tone-group-{{ article_index }}" class="save-tone-container">
-                                    <div class="input-group mb-2">
-                                        <input type="text" class="form-control" id="tone-name-{{ article_index }}" 
-                                               placeholder="Name for this tone">
-                                    </div>
-                                    <button type="button" class="btn btn-success btn-sm save-tone" data-index="{{ article_index }}">
-                                        <i data-feather="plus" class="icon-sm me-1"></i>Save Tone
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Keywords Section -->
-                            <div class="mt-3 additional-options">
-                                <div class="keyword-container">
-                                    <label class="form-label">Keywords for Blog</label>
-                                    <div class="keyword-input-group">
-                                        <input type="text" class="form-control" id="keyword-input-{{ article_index }}" 
-                                               placeholder="Type a keyword">
-                                        <button type="button" class="btn btn-primary" id="add-keyword-btn-{{ article_index }}">
-                                            <i data-feather="plus" class="icon-xs"></i> Add
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="keywords-{{ article_index }}" id="keywords-hidden-{{ article_index }}">
-                                    
-                                    <div class="mb-2">
-                                        <small class="text-muted">Selected keywords:</small>
-                                        <div class="selected-keywords" id="selected-keywords-{{ article_index }}"></div>
-                                    </div>
-                                    
-                                    <div class="mb-2">
-                                        <small class="text-muted">Your stored keywords:</small>
-                                        <div class="stored-keywords" id="stored-keywords-{{ article_index }}">
-                                            {% if user and user.keywords %}
-                                                {% for keyword in user.keywords.split(',') %}
-                                                    {% if keyword.strip() %}
-                                                    <span class="badge stored-keyword keyword-badge" data-keyword="{{ keyword.strip() }}">
-                                                        {{ keyword.strip() }}
-                                                    </span>
-                                                    {% endif %}
-                                                {% endfor %}
+                            <div class="collapse" id="userInfoCollapse">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <!-- View Mode -->
+                                        <div class="info-view-mode">
+                                            <p class="mb-2"><strong>Firm:</strong> <span class="firm-value">{{ user.firm }}</span></p>
+                                            <p class="mb-2"><strong>Location:</strong> <span class="location-value">{{ user.location }}</span></p>
+                                            <p class="mb-2"><strong>Lawyer Name:</strong> <span class="lawyer-name-value">{{ user.lawyer_name }}</span></p>
+                                            <p class="mb-2"><strong>State:</strong> <span class="state-value">{{ user.state }}</span></p>
+                                            {% if user.address %}
+                                            <p class="mb-2"><strong>Address:</strong> <span class="address-value">{{ user.address }}</span></p>
                                             {% endif %}
+                                            <p class="mb-2"><strong>Planning Session:</strong> <span class="planning-session-value">{{ user.planning_session }}</span></p>
+                                            {% if user.other_planning_session %}
+                                            <p class="mb-2"><strong>Other Planning Session:</strong> <span class="other-planning-session-value">{{ user.other_planning_session }}</span></p>
+                                            {% endif %}
+                                            {% if user.discovery_call_link %}
+                                            <p class="mb-0"><strong>Discovery Call Link:</strong> <span class="discovery-call-link-value">{{ user.discovery_call_link }}</span></p>
+                                            {% endif %}
+                            </div>
+                            
+                                        <!-- Edit Mode -->
+                                        <div class="info-edit-mode" style="display: none;">
+                                            <div class="mb-2">
+                                                <label class="form-label"><strong>Firm:</strong></label>
+                                                <input type="text" class="form-control form-control-sm firm-input" value="{{ user.firm }}">
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="form-label"><strong>Location:</strong></label>
+                                                <input type="text" class="form-control form-control-sm location-input" value="{{ user.location }}">
+                                </div>
+                                            <div class="mb-2">
+                                                <label class="form-label"><strong>Lawyer Name:</strong></label>
+                                                <input type="text" class="form-control form-control-sm lawyer-name-input" value="{{ user.lawyer_name }}">
+                                    </div>
+                                            <div class="mb-2">
+                                                <label class="form-label"><strong>State:</strong></label>
+                                                <input type="text" class="form-control form-control-sm state-input" value="{{ user.state }}">
+                                </div>
+                                            <div class="mb-2">
+                                                <label class="form-label"><strong>Address:</strong></label>
+                                                <input type="text" class="form-control form-control-sm address-input" value="{{ user.address }}">
+                            </div>
+                                            <div class="mb-2">
+                                                <label class="form-label"><strong>Planning Session:</strong></label>
+                                                <input type="text" class="form-control form-control-sm planning-session-input" value="{{ user.planning_session }}">
+                                    </div>
+                                    <div class="mb-2">
+                                                <label class="form-label"><strong>Other Planning Session:</strong></label>
+                                                <input type="text" class="form-control form-control-sm other-planning-session-input" value="{{ user.other_planning_session }}">
+                                    </div>
+                                    <div class="mb-2">
+                                                <label class="form-label"><strong>Discovery Call Link:</strong></label>
+                                                <input type="text" class="form-control form-control-sm discovery-call-link-input" value="{{ user.discovery_call_link }}">
+                                            </div>
+                                            <div class="d-flex gap-2 mt-3">
+                                                <button type="button" class="btn btn-sm btn-primary save-info-btn">Save Changes</button>
+                                                <button type="button" class="btn btn-sm btn-secondary cancel-edit-btn">Cancel</button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                                
-            
-                                <div class="form-floating mb-2">
-                                    <input type="text" class="form-control" name="firm-{{ article_index }}" 
-                                           id="firm-{{ article_index }}" placeholder="Firm name">
-                                    <label for="firm-{{ article_index }}">Firm Name</label>
-                                </div>
-                                
-                                <div class="form-floating mb-2">
-                                    <input type="text" class="form-control" name="location-{{ article_index }}" 
-                                           id="location-{{ article_index }}" placeholder="Location">
-                                    <label for="location-{{ article_index }}">Location</label>
-                                </div>
-                                <div class="form-floating mb-3">
-                                    <input type="text" 
-                                        class="form-control" 
-                                            name="planning_session_name-{{ article_index }}" 
-                                            id="planning_session_name-{{ article_index }}" 
-                                            placeholder=" "
-                                            value="">
-                                        <label for="planning_session_name-{{ article_index }}">What's your Planning Session?</label>
-                                </div>
-                                        <small class="text-muted">Leave blank to use "Life & Legacy Planning Session"</small>
-                            </div>
-                            
-                            <!-- Action buttons -->
-                            <div class="mt-3">
-                                <button type="button" class="btn btn-secondary btn-sm cancel-tone" data-index="{{ article_index }}">
-                                    <i data-feather="x" class="icon-sm me-1"></i>Cancel
-                                </button>
-                                <button type="button" class="btn btn-primary btn-sm continue-tone" data-index="{{ article_index }}" data-article="{{ article }}">
-                                    <i data-feather="check" class="icon-sm me-1"></i>Continue
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -348,9 +424,14 @@
         </div>
         {% endif %}
 
-        <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-            <div class="spinner"></div>
-            <div class="loading-text">Generating your blog...</div>
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="position-fixed top-0 start-0 w-100 h-100 d-none" style="background: rgba(255, 255, 255, 0.9); z-index: 9999;">
+            <div class="d-flex flex-column align-items-center justify-content-center h-100">
+                <div class="spinner-border spinner-border-sm text-dark mb-2" role="status" style="width: 2rem; height: 2rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5 class="text-dark mb-0">Generating your blog...</h5>
+            </div>
         </div>
     </div>
 </div>
@@ -364,224 +445,142 @@
         const toastEl = document.getElementById('toast');
         const toast = toastEl ? new bootstrap.Toast(toastEl, {autohide: true, delay: 3000}) : null;
 
-        function showToneSelection(index) {
-            document.getElementById(`tone-selection-${index}`).style.display = 'block';
-            setupKeywordSelection(index);
-            autoFillUserDetails(index);
-        }
-
-        function hideToneSelection(index) {
-            document.getElementById(`tone-selection-${index}`).style.display = 'none';
-        }
-
-        function autoFillUserDetails(index) {
-            const firm = "{{ user.firm if user else '' }}";
-            const location = "{{ user.location if user else '' }}";
-            
-            if (firm) document.getElementById(`firm-${index}`).value = firm;
-            if (location) document.getElementById(`location-${index}`).value = location;
-        }
-
-        function setupKeywordSelection(index) {
-            const keywordInput = document.getElementById(`keyword-input-${index}`);
-            const addBtn = document.getElementById(`add-keyword-btn-${index}`);
-            const storedKeywords = document.getElementById(`stored-keywords-${index}`);
-            const selectedKeywords = document.getElementById(`selected-keywords-${index}`);
-            const keywordsHidden = document.getElementById(`keywords-hidden-${index}`);
-
-            function addKeyword(keyword) {
-                keyword = keyword.trim();
-                if (!keyword) return;
-                
-                const currentKeywords = keywordsHidden.value ? keywordsHidden.value.split(',') : [];
-                if (currentKeywords.includes(keyword)) return;
-                
-                const badge = document.createElement('span');
-                badge.className = 'badge selected-keyword me-2 mb-2';
-                badge.innerHTML = `
-                    ${keyword}
-                    <span class="remove-keyword ms-2" data-keyword="${keyword}">
-                        <i data-feather="x" class="icon-xs"></i>
-                    </span>
-                `;
-                selectedKeywords.appendChild(badge);
-                
-                currentKeywords.push(keyword);
-                keywordsHidden.value = currentKeywords.join(',');
-                
-                badge.querySelector('.remove-keyword').addEventListener('click', function() {
-                    removeKeyword(keyword);
-                });
-                
-                feather.replace();
-            }
-
-            function removeKeyword(keyword) {
-                document.querySelectorAll(`#selected-keywords-${index} .badge`).forEach(badge => {
-                    if (badge.textContent.includes(keyword)) {
-                        badge.remove();
-                    }
-                });
-                
-                let currentKeywords = keywordsHidden.value ? keywordsHidden.value.split(',') : [];
-                currentKeywords = currentKeywords.filter(k => k !== keyword);
-                keywordsHidden.value = currentKeywords.join(',');
-            }
-
-            addBtn.addEventListener('click', function() {
-                addKeyword(keywordInput.value);
-                keywordInput.value = '';
-                keywordInput.focus();
-            });
-
-            keywordInput.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addKeyword(this.value);
-                    this.value = '';
-                }
-            });
-
-            storedKeywords.addEventListener('click', function(e) {
-                if (e.target.classList.contains('keyword-badge')) {
-                    addKeyword(e.target.dataset.keyword);
-                }
-            });
-        }
-
-        function submitWithTone(index, article) {
-            document.getElementById('loadingOverlay').style.display = 'flex';
-        
-            const formData = {
-                tone: document.querySelector(`input[name="tone-${index}"]:checked`).value,
-                keywords: document.getElementById(`keywords-hidden-${index}`).value,
-                firm: document.getElementById(`firm-${index}`).value,
-                location: document.getElementById(`location-${index}`).value,
-                planning_session_name: document.getElementById(`planning_session_name-${index}`).value
-            };
-            
-            if (formData.tone === 'custom') {
-                formData.customToneName = document.getElementById(`tone-name-${index}`).value || "Custom Tone"; // Default name if empty;
-                formData.toneDescription = document.getElementById(`customTone-${index}`).value;
-                if (!formData.toneDescription) {
-                    alert('Please describe your custom tone');
-                    document.getElementById('loadingOverlay').style.display = 'none';
-                    return;
-                }
-            } else {
-                formData.toneDescription = document.querySelector(`input[name="tone-${index}"]:checked`)
-                    .closest('.tone-option').querySelector('.tone-description').textContent;
-            }
-            
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = "{{ url_for('select_article', article='') }}" + article;
-            
-            for (const [name, value] of Object.entries(formData)) {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = name;
-                input.value = value;
-                form.appendChild(input);
-            }
-            
-            document.body.appendChild(form);
-            form.submit();
-        }
-
-        function saveCustomTone(index) {
-            const toneName = document.getElementById(`tone-name-${index}`).value.trim();
-            const toneDesc = document.getElementById(`customTone-${index}`).value.trim();
-            
-            if (!toneName || !toneDesc) {
-                alert('Please provide both a name and description for your custom tone');
-                return;
-            }
-            
-            fetch("{{ url_for('add_tone') }}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `tone_name=${encodeURIComponent(toneName)}&tone_description=${encodeURIComponent(toneDesc)}`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const newToneId = `tone-${Date.now()}-${index}`;
-                    const toneOption = document.createElement('div');
-                    toneOption.className = 'tone-option custom-tone-item';
-                    toneOption.innerHTML = `
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="tone-${index}" 
-                                   id="${newToneId}" value="${toneName}">
-                            <label class="form-check-label" for="${newToneId}">
-                                <strong>${toneName}</strong>
-                            </label>
-                        </div>
-                        <div class="tone-description">${toneDesc}</div>
-                    `;
-                    
-                    const container = document.getElementById(`tone-selection-${index}`);
-                    container.insertBefore(toneOption, document.getElementById(`tone-option-new-${index}`));
-
-                    document.getElementById(`customTone-${index}`).value = '';
-                    document.getElementById(`tone-name-${index}`).value = '';
-                    document.getElementById(`customToneGroup-${index}`).style.display = 'none';
-                    document.getElementById(`tone-new-${index}`).checked = false;
-                    document.getElementById(newToneId).checked = true;
-
-                    if (toast) {
-                        document.getElementById('toast-message').textContent = 'Tone saved successfully!';
-                        toast.show();
-                    }
-                }
-            });
-        }
-
-
+        // Show loading overlay when form is submitted
         document.querySelectorAll('.article-form').forEach(form => {
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const article = this.action.split('/').pop();
-                const card = this.closest('.col-md-6');
-                const index = Array.from(card.parentNode.children).indexOf(card) + 1;
-                showToneSelection(index);
+            form.addEventListener('submit', function() {
+                document.getElementById('loadingOverlay').classList.remove('d-none');
             });
         });
-        
-        document.querySelectorAll('.cancel-tone').forEach(btn => {
+
+        // Handle collapse icon rotation
+        document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(button => {
+            button.addEventListener('click', function() {
+                const icon = this.querySelector('.collapse-icon');
+                if (icon) {
+                    icon.style.transform = this.getAttribute('aria-expanded') === 'true' ? 'rotate(90deg)' : 'rotate(0deg)';
+                }
+            });
+        });
+
+        // Edit information functionality
+        document.querySelectorAll('.edit-info-btn').forEach(btn => {
             btn.addEventListener('click', function() {
-                const index = this.dataset.index;
-                hideToneSelection(index);
-            });
-        });
-        
-        document.querySelectorAll('.continue-tone').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const index = this.dataset.index;
-                const article = this.dataset.article;
-                submitWithTone(index, article);
-            });
-        });
-        
-        document.querySelectorAll('.save-tone').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const index = this.dataset.index;
-                saveCustomTone(index);
-            });
-        });
-        
-        document.querySelectorAll('input[type="radio"][name^="tone-"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                const parts = this.id.split('-');
-                const index = parts.length > 3 ? parts[3] : parts[2];
-                const customToneGroup = document.getElementById(`customToneGroup-${index}`);
+                // Toggle button appearance
+                this.classList.toggle('btn-light');
+                this.classList.toggle('btn-primary');
                 
-                if (this.id.includes('new')) {
-                    customToneGroup.style.display = 'block';
-                } else {
-                    customToneGroup.style.display = 'none';
+                // Ensure the collapse is open when editing
+                const collapse = this.closest('.mt-3').querySelector('#userInfoCollapse');
+                if (collapse) {
+                    const bsCollapse = new bootstrap.Collapse(collapse, {toggle: false});
+                    bsCollapse.show();
+                }
+
+                const card = this.closest('.card-body');
+                const viewMode = card.querySelector('.info-view-mode');
+                const editMode = card.querySelector('.info-edit-mode');
+                
+                // Set form values to current view values
+                const setValue = (viewSelector, editSelector) => {
+                    const viewElement = viewMode.querySelector(viewSelector);
+                    const editElement = editMode.querySelector(editSelector);
+                    if (viewElement && editElement) {
+                        editElement.value = viewElement.textContent;
+                    }
+                };
+
+                // Set values with null checks
+                setValue('.firm-value', '.firm-input');
+                setValue('.location-value', '.location-input');
+                setValue('.lawyer-name-value', '.lawyer-name-input');
+                setValue('.state-value', '.state-input');
+                setValue('.address-value', '.address-input');
+                setValue('.planning-session-value', '.planning-session-input');
+                setValue('.other-planning-session-value', '.other-planning-session-input');
+                setValue('.discovery-call-link-value', '.discovery-call-link-input');
+                
+                // Show edit mode
+                viewMode.style.display = 'none';
+                editMode.style.display = 'block';
+            });
+        });
+        
+        document.querySelectorAll('.cancel-edit-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const card = this.closest('.card-body');
+                const viewMode = card.querySelector('.info-view-mode');
+                const editMode = card.querySelector('.info-edit-mode');
+                
+                // Reset edit button appearance
+                const editBtn = card.closest('.mt-3').querySelector('.edit-info-btn');
+                editBtn.classList.remove('btn-primary');
+                editBtn.classList.add('btn-light');
+                
+                // Hide edit mode and show view mode
+                editMode.style.display = 'none';
+                viewMode.style.display = 'block';
+            });
+        });
+        
+        document.querySelectorAll('.save-info-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const card = this.closest('.card-body');
+                const viewMode = card.querySelector('.info-view-mode');
+                const editMode = card.querySelector('.info-edit-mode');
+                
+                // Reset edit button appearance
+                const editBtn = card.closest('.mt-3').querySelector('.edit-info-btn');
+                editBtn.classList.remove('btn-primary');
+                editBtn.classList.add('btn-light');
+                
+                // Helper function to update values
+                const updateValue = (viewSelector, editSelector) => {
+                    const viewElement = viewMode.querySelector(viewSelector);
+                    const editElement = editMode.querySelector(editSelector);
+                    if (viewElement && editElement) {
+                        viewElement.textContent = editElement.value;
+                    }
+                };
+
+                // Update view mode values
+                updateValue('.firm-value', '.firm-input');
+                updateValue('.location-value', '.location-input');
+                updateValue('.lawyer-name-value', '.lawyer-name-input');
+                updateValue('.state-value', '.state-input');
+                updateValue('.address-value', '.address-input');
+                updateValue('.planning-session-value', '.planning-session-input');
+                updateValue('.other-planning-session-value', '.other-planning-session-input');
+                updateValue('.discovery-call-link-value', '.discovery-call-link-input');
+
+                // Update hidden inputs in the article form
+                const articleForm = card.closest('.article-card').querySelector('.article-form');
+                if (articleForm) {
+                    const updateFormValue = (name, editSelector) => {
+                        const input = articleForm.querySelector(`input[name="${name}"]`);
+                        const editElement = editMode.querySelector(editSelector);
+                        if (input && editElement) {
+                            input.value = editElement.value;
+                        }
+                    };
+
+                    updateFormValue('firm', '.firm-input');
+                    updateFormValue('location', '.location-input');
+                    updateFormValue('lawyer_name', '.lawyer-name-input');
+                    updateFormValue('state', '.state-input');
+                    updateFormValue('address', '.address-input');
+                    updateFormValue('planning_session', '.planning-session-input');
+                    updateFormValue('other_planning_session', '.other-planning-session-input');
+                    updateFormValue('discovery_call_link', '.discovery-call-link-input');
+                }
+
+                // Switch back to view mode
+                editMode.style.display = 'none';
+                viewMode.style.display = 'block';
+
+                // Show success message
+                if (toast) {
+                    document.getElementById('toast-message').textContent = 'Information updated successfully!';
+                    toast.show();
                 }
             });
         });
@@ -601,16 +600,15 @@
         // Initialize with 'latest' filter
             const defaultFilter = document.querySelector('.filter-btn[data-filter="latest"]');
             if (defaultFilter) defaultFilter.click();
-        });
 
         function filterArticles(filterType, clickedButton) {
-            const articlesContainer = document.querySelector('.row'); // Changed to target the row container
+            const articlesContainer = document.querySelector('.row');
             const articles = Array.from(document.querySelectorAll('.article-card'));
             
             // First, reset all articles to visible and remove any previous hiding
             articles.forEach(article => {
                 article.style.display = 'block';
-                article.parentElement.style.display = 'block'; // Show the parent column
+                article.parentElement.style.display = 'block';
             });
             
             if (filterType === 'latest') {
@@ -648,7 +646,7 @@
                             article.parentElement.style.display = 'block';
                         } else {
                             article.style.display = 'none';
-                            article.parentElement.style.display = 'none'; // Hide the parent column
+                            article.parentElement.style.display = 'none';
                         }
                     }
                 });
@@ -675,12 +673,54 @@
             void articlesContainer.offsetWidth;
         }
         
-        document.addEventListener('DOMContentLoaded', function() {
-            const latestBtn = document.querySelector('.filter-btn[data-filter="latest"]');
-            if (latestBtn) {
-                latestBtn.click();
+        // Preview functionality
+        const previewDialog = document.getElementById('previewDialog');
+        const previewOverlay = document.getElementById('previewOverlay');
+        const previewContent = document.getElementById('previewContent');
+        const closePreview = document.getElementById('closePreview');
+
+        // Function to load article content
+        async function loadArticleContent(article) {
+            try {
+                const response = await fetch(`/preview_article/${article}`);
+                if (!response.ok) throw new Error('Failed to load article');
+                const data = await response.json();
+                previewContent.innerHTML = data.content;
+                feather.replace();
+            } catch (error) {
+                console.error('Error loading article:', error);
+                previewContent.innerHTML = '<div class="alert alert-danger">Failed to load article preview</div>';
+            }
+        }
+
+        // Open preview
+        document.querySelectorAll('.preview-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const article = this.dataset.article;
+                loadArticleContent(article);
+                previewDialog.classList.add('active');
+                previewOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            });
+        });
+
+        // Close preview
+        function closePreviewDialog() {
+            previewDialog.classList.remove('active');
+            previewOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        closePreview.addEventListener('click', closePreviewDialog);
+        previewOverlay.addEventListener('click', closePreviewDialog);
+
+        // Close on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && previewDialog.classList.contains('active')) {
+                closePreviewDialog();
             }
         });
-  
+    });
 </script>
 {% endblock %}

@@ -5,11 +5,26 @@
 {% block extra_css %}
 <style>
     .preview-container {
-        max-height: 500px;
+        max-height: 600px;
         overflow-y: auto;
         border: 1px solid #dee2e6;
         border-radius: 0.25rem;
-        padding: 1rem;
+        padding: 1.5rem;
+        background-color: #fff;
+    }
+    .preview-container::-webkit-scrollbar {
+        width: 8px;
+    }
+    .preview-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+    .preview-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+    .preview-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
     }
     .chat-message {
         margin-bottom: 1rem;
@@ -46,7 +61,6 @@
         border-radius: 0.25rem;
         margin-bottom: 1rem;
     }
-
     .imageLoading p {
         margin-top: 0.5rem;
         color: #0E2539;
@@ -72,128 +86,187 @@
     </div>
 
     <div class="card-body">
-        <ul class="nav nav-tabs mb-4" id="editTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab" aria-controls="manual" aria-selected="true">Manual Editing</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="ai-tab" data-bs-toggle="tab" data-bs-target="#ai" type="button" role="tab" aria-controls="ai" aria-selected="false">AI Editor</button>
-            </li>
-        </ul>
-        
-        <div class="tab-content" id="editTabsContent">
-            <!-- Manual Editing Tab -->
-            <div class="tab-pane fade show active" id="manual" role="tabpanel" aria-labelledby="manual-tab">
-                <div class="row">
-                    <div class="col-lg-8">
-                        <div class="card mb-4">
-                            <div class="card-header bg-light">
-                                <h2 class="h5 mb-0">Edit Content</h2>
-                            </div>
-                            <div class="card-body">
-                                <form method="POST" action="{{ url_for('save_changes') }}">
-                                    <div class="mb-4">
-                                        <textarea name="content" class="form-control" rows="20" style="font-size: 1.1rem; line-height: 1.8;">{{ post.content }}</textarea>
-                                    </div>
-                                    <div class="d-flex justify-content-between">
-                                        <button type="submit" class="btn btn-primary">Save Changes</button>
-                                        <div>
-                                            <a href="{{ url_for('finalize') }}" class="btn btn-success">Finalize Post</a>
-                                        </div>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="col-lg-4">
-                        <div class="card mb-4">
-                            <div class="card-header bg-light">
-                                <h2 class="h5 mb-0">Live Preview</h2>
-                            </div>
-                            <div class="card-body">
-                                <div class="preview-container" id="livePreview">
-                                    {{ post.content|markdown|safe }}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="card">
-                            <div class="card-header bg-light">
-                                <h2 class="h5 mb-0">Generated Image</h2>
-                            </div>
-                            <div class="card-body">
-                                {% if image_url %}
-                                <img src="{{ image_url }}" alt="Generated blog image" class="img-fluid rounded mb-3">
-                                {% else %}
-                                <div class="alert alert-info">
-                                    No image generated yet.
-                                </div>
-                                {% endif %}
-
-                                <div id="imageLoading" class="text-center" style="display: none;">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <p class="mt-2">Generating image...</p>
-                                </div>
-                                <div class="d-grid gap-2">
-                                    <button id="generateImageBtn" class="btn btn-info" onclick="generateImage()">
-                                        <i data-feather="image" class="icon-sm me-1"></i>Generate Image
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="card">
+            <div class="card-header bg-light">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="ai-tab" data-bs-toggle="tab" data-bs-target="#ai" type="button" role="tab" aria-controls="ai" aria-selected="true">
+                            <i data-feather="message-square" class="icon-sm me-1"></i>AI Editor
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab" aria-controls="manual" aria-selected="false">
+                            <i data-feather="edit-2" class="icon-sm me-1"></i>Manual Editing
+                        </button>
+                    </li>
+                </ul>
             </div>
-            
-            <!-- AI Editor Tab -->
-            <div class="tab-pane fade" id="ai" role="tabpanel" aria-labelledby="ai-tab">
-                <div class="row">
-                    <div class="col-lg-8">
-                        <div class="card mb-4">
-                            <div class="card-header bg-light">
-                                <h2 class="h5 mb-0">AI Assistant</h2>
-                            </div>
-                            <div class="card-body">
-                                <div class="chat-history mb-4">
-                                    {% for message in chat_history %}
-                                    <div class="chat-message {{ message.role }}">
-                                        <div class="d-flex justify-content-between">
-                                            <strong>{{ message.role|title }}</strong>
-                                            <span class="timestamp">{{ message.timestamp }}</span>
-                                        </div>
-                                        <div class="content {% if message.content_is_blog %}blog{% endif %}">
-                                            {% if message.content_is_blog %}
-                                            {{ message.content|markdown|safe }}
-                                            {% else %}
-                                            {{ message.content }}
-                                            {% endif %}
-                                        </div>
+            <div class="card-body">
+                <div class="tab-content">
+                    <!-- AI Editor Tab -->
+                    <div class="tab-pane fade show active" id="ai" role="tabpanel" aria-labelledby="ai-tab">
+                        <div class="row">
+                            <!-- Left Column: Edit Instructions and Chat History -->
+                            <div class="col-lg-6">
+                                <div class="card mb-4">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">Edit Instructions</h2>
                                     </div>
-                                    {% endfor %}
+                                    <div class="card-body">
+                                        <form id="aiEditForm" method="POST">
+                                            <div class="mb-3">
+                                                <textarea name="edit_message" class="form-control" rows="3" placeholder="Type your edit instructions here..."></textarea>
+                                            </div>
+                                            <div class="d-grid">
+                                                <button type="submit" id="applyChangesBtn" class="btn btn-primary">
+                                                    <span class="button-text">Apply Changes</span>
+                                                    <span class="spinner-border spinner-border-sm ms-2" style="display: none;" role="status" aria-hidden="true"></span>
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
                                 </div>
-                                
-                                <form method="POST" action="{{ url_for('review') }}">
-                                    <div class="mb-3">
-                                        <label for="edit_message" class="form-label">Edit Instructions</label>
-                                        <textarea id="edit_message" name="edit_message" class="form-control" rows="3" placeholder="Describe how you want to edit the blog post..."></textarea>
+
+                                <div class="card mb-4">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">AI Assistant</h2>
                                     </div>
-                                    <button type="submit" class="btn btn-primary">Apply Changes</button>
-                                </form>
+                                    <div class="card-body">
+                                        <div class="chat-history" style="max-height: 600px; overflow-y: auto;">
+                                            {% for message in chat_history %}
+                                            <div class="chat-message {{ message.role }} mb-3">
+                                                <div class="message-header d-flex align-items-center mb-1">
+                                                    <span class="badge bg-primary me-2">{{ message.role|title }}</span>
+                                                    <small class="text-muted">{{ message.timestamp }}</small>
+                                                </div>
+                                                <div class="message-content {{ 'blog' if message.content_is_blog else '' }}">
+                                                    {{ message.content|markdown|safe }}
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card">
+                                    <div class="card-body">
+                                        <div class="d-grid">
+                                            <a href="{{ url_for('finalize') }}" class="btn btn-success btn-lg">
+                                                <i data-feather="check-circle" class="icon-sm me-2"></i>Finalize Post
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right Column: Preview and Generated Image -->
+                            <div class="col-lg-6">
+                                <div class="card mb-4">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">Current Version</h2>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="preview-container" style="max-height: 600px; overflow-y: auto;">
+                                            {{ post.content|markdown|safe }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">Generated Image</h2>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if image_url %}
+                                        <img src="{{ image_url }}" alt="Generated blog image" class="img-fluid rounded mb-3">
+                                        {% else %}
+                                        <div class="alert alert-info">
+                                            No image generated yet.
+                                        </div>
+                                        {% endif %}
+
+                                        <div id="aiImageLoading" class="text-center" style="display: none;">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Generating image...</p>
+                                        </div>
+                                        <div class="d-grid gap-2">
+                                            <button id="aiGenerateImageBtn" class="btn btn-info" onclick="generateImage('ai')">
+                                                <i data-feather="image" class="icon-sm me-1"></i>Generate Image
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="col-lg-4">
-                        <div class="card">
-                            <div class="card-header bg-light">
-                                <h2 class="h5 mb-0">Current Version</h2>
+
+                    <!-- Manual Editing Tab -->
+                    <div class="tab-pane fade" id="manual" role="tabpanel" aria-labelledby="manual-tab">
+                        <div class="row">
+                            <!-- Left Column: Edit Form -->
+                            <div class="col-lg-6">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">Edit Content</h2>
+                                    </div>
+                                    <div class="card-body">
+                                        <form method="POST">
+                                            <div class="mb-3">
+                                                <textarea name="content" class="form-control" rows="20">{{ post.content }}</textarea>
+                                            </div>
+                                            <div class="d-flex justify-content-between">
+                                                <button type="submit" class="btn btn-primary">
+                                                    <i data-feather="save" class="icon-sm me-1"></i>Save Changes
+                                                </button>
+                                                <a href="{{ url_for('finalize') }}" class="btn btn-success">
+                                                    <i data-feather="check-circle" class="icon-sm me-1"></i>Finalize Post
+                                                </a>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <div class="preview-container">
-                                    {{ post.content|markdown|safe }}
+
+                            <!-- Right Column: Preview and Generated Image -->
+                            <div class="col-lg-6">
+                                <div class="card mb-4">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">Live Preview</h2>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="livePreview" class="preview-container" style="max-height: 600px; overflow-y: auto;">
+                                            {{ post.content|markdown|safe }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h2 class="h5 mb-0">Generated Image</h2>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if image_url %}
+                                        <img src="{{ image_url }}" alt="Generated blog image" class="img-fluid rounded mb-3">
+                                        {% else %}
+                                        <div class="alert alert-info">
+                                            No image generated yet.
+                                        </div>
+                                        {% endif %}
+
+                                        <div id="manualImageLoading" class="text-center" style="display: none;">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Generating image...</p>
+                                        </div>
+                                        <div class="d-grid gap-2">
+                                            <button id="manualGenerateImageBtn" class="btn btn-info" onclick="generateImage('manual')">
+                                                <i data-feather="image" class="icon-sm me-1"></i>Generate Image
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -208,51 +281,108 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-    document.querySelector('textarea[name="content"]').addEventListener('input', function() {
-        const preview = document.getElementById('livePreview');
-        // Use marked.js to properly render markdown
-        preview.innerHTML = marked.parse(this.value);
-    });
-
     document.addEventListener('DOMContentLoaded', function() {
-        const textarea = document.querySelector('textarea[name="content"]');
-        const preview = document.getElementById('livePreview');
-        if (textarea && preview) {
-            preview.innerHTML = marked.parse(textarea.value);
-        }
-    });
-    function generateImage() {
-        // Show loading state
-        document.getElementById('generateImageBtn').disabled = true;
-        document.getElementById('imageLoading').style.display = 'block';
-        
-        // Hide existing image or message
-        const generatedImage = document.getElementById('generatedImage');
-        const noImageAlert = document.getElementById('noImageAlert');
-        if (generatedImage) generatedImage.style.display = 'none';
-        if (noImageAlert) noImageAlert.style.display = 'none';
-        
-        // Make AJAX request to generate image
-        fetch("{{ url_for('generate_image') }}")
-            .then(response => {
-                if (response.redirected) {
-                    // Reload the page when image is generated
-                    window.location.reload();
-                } else {
-                    throw new Error('Image generation failed');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                // Restore UI state
-                document.getElementById('generateImageBtn').disabled = false;
-                document.getElementById('imageLoading').style.display = 'none';
-                if (generatedImage) generatedImage.style.display = 'block';
-                if (noImageAlert) noImageAlert.style.display = 'block';
-                
-                // Show error message
-                alert('Image generation failed. Please try again.');
+        // Initialize marked with options
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        // Handle form submission loading state
+        const aiEditForm = document.getElementById('aiEditForm');
+        const applyChangesBtn = document.getElementById('applyChangesBtn');
+        if (aiEditForm && applyChangesBtn) {
+            aiEditForm.addEventListener('submit', function() {
+                // Disable the button
+                applyChangesBtn.disabled = true;
+                // Show spinner
+                applyChangesBtn.querySelector('.spinner-border').style.display = 'inline-block';
+                // Change button text
+                applyChangesBtn.querySelector('.button-text').textContent = 'Applying Changes...';
             });
-    }
+        }
+
+        // Function to update preview
+        function updatePreview(content, previewElement) {
+            if (previewElement) {
+                previewElement.innerHTML = marked.parse(content);
+            }
+        }
+
+        // Handle manual editing preview
+        const manualTextarea = document.querySelector('textarea[name="content"]');
+        const manualPreview = document.getElementById('livePreview');
+        if (manualTextarea && manualPreview) {
+            manualTextarea.addEventListener('input', function() {
+                updatePreview(this.value, manualPreview);
+            });
+            // Initial preview
+            updatePreview(manualTextarea.value, manualPreview);
+        }
+
+        // Handle AI Editor preview
+        const aiPreview = document.querySelector('#ai .preview-container');
+        if (aiPreview) {
+            // Update preview when chat history changes
+            const chatHistory = document.querySelector('.chat-history');
+            if (chatHistory) {
+                const observer = new MutationObserver(function(mutations) {
+                    // Find the latest blog content in chat history
+                    const blogMessages = chatHistory.querySelectorAll('.chat-message.assistant .content.blog');
+                    if (blogMessages.length > 0) {
+                        const latestBlog = blogMessages[blogMessages.length - 1];
+                        updatePreview(latestBlog.textContent, aiPreview);
+                    }
+                });
+
+                observer.observe(chatHistory, {
+                    childList: true,
+                    subtree: true
+                });
+            }
+        }
+
+        // Handle image generation
+        function generateImage(section) {
+            const loadingId = section === 'manual' ? 'manualImageLoading' : 'aiImageLoading';
+            const buttonId = section === 'manual' ? 'manualGenerateImageBtn' : 'aiGenerateImageBtn';
+            
+            // Show loading state
+            document.getElementById(buttonId).disabled = true;
+            document.getElementById(loadingId).style.display = 'block';
+            
+            // Hide existing image or message in the current section
+            const card = document.getElementById(buttonId).closest('.card');
+            const generatedImage = card.querySelector('img');
+            const noImageAlert = card.querySelector('.alert-info');
+            if (generatedImage) generatedImage.style.display = 'none';
+            if (noImageAlert) noImageAlert.style.display = 'none';
+            
+            // Make AJAX request to generate image
+            fetch("{{ url_for('generate_image') }}")
+                .then(response => {
+                    if (response.redirected) {
+                        // Reload the page when image is generated
+                        window.location.reload();
+                    } else {
+                        throw new Error('Image generation failed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    // Restore UI state
+                    document.getElementById(buttonId).disabled = false;
+                    document.getElementById(loadingId).style.display = 'none';
+                    if (generatedImage) generatedImage.style.display = 'block';
+                    if (noImageAlert) noImageAlert.style.display = 'block';
+                    
+                    // Show error message
+                    alert('Image generation failed. Please try again.');
+                });
+        }
+
+        // Make generateImage function globally available
+        window.generateImage = generateImage;
+    });
 </script>
 {% endblock %}
